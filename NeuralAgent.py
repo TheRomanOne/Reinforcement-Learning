@@ -8,8 +8,8 @@ import random
 class QNetwork(nn.Module):
     def __init__(self, state_size, action_size):
         super(QNetwork, self).__init__()
-        self.fc1 = nn.Linear(state_size[0], 256)
-        self.fc2 = nn.Linear(256, 64)
+        self.fc1 = nn.Linear(state_size[0], state_size[0] // 2)
+        self.fc2 = nn.Linear(state_size[0] // 2, 64)
         self.fc3 = nn.Linear(64, action_size)
         self.relu = nn.ReLU()
 
@@ -81,7 +81,7 @@ class DQLAgent:
 
     def train(self):
         if len(self.memory) < self.batch_size:
-            return
+            return -1
         
         batch = random.sample(self.memory, self.batch_size)
         states, actions, rewards, next_states, dones = zip(*batch)
@@ -106,6 +106,8 @@ class DQLAgent:
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
+
+        return loss.item()
         
     def decay_epsilon(self):
         self.epsilon = max(self.epsilon * self.epsilon_decay, self.epsilon_min)
