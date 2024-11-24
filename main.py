@@ -1,14 +1,18 @@
-import pygame
+import torch, os, warnings
+
 from NeuralAgent import DQLAgent
 from Scene import Scene
 
-# grid_shape = (20, 15)
-cell_size = 50
-grid_shape = (12, 10)
+warnings.filterwarnings("ignore")
+os.system('clear')
+
+
+cell_size = 35
+grid_shape = (15, 7)
 window_shape = (grid_shape[0] * cell_size, grid_shape[1] * cell_size)
     
 scene = Scene(window_shape, grid_shape)
-agent = DQLAgent(state_size=scene.get_state().shape[0], epsilon_decay=0.995, action_size=4)
+agent = DQLAgent(state_size=scene.get_state().shape, epsilon_decay=0.9965, action_size=4)
 
 episodes = 500
 for episode in range(episodes):
@@ -26,7 +30,7 @@ for episode in range(episodes):
         total_reward += reward
 
     scene.episode += 1
-    print(f"Episode {scene.episode}: Total Reward = {total_reward}. Epsilon = {agent.epsilon:.2f}")
+    print(f"Episode {scene.episode}: Total Reward = {total_reward:.2f}. Epsilon = {agent.epsilon:.2f}")
     agent.decay_epsilon()
     agent.update_target_network()  # Update target network periodically
 
