@@ -43,19 +43,24 @@ class Character:
     
     def move(self, direction):
         self.world_map.map[self.x, self.y] = 0
-        
+        valid_move = False
         if direction == 'up' and self.y > 0 and self.world_map.map[self.x, self.y - 1] in self.walkable:
             self.y -= 1
+            valid_move = True
         elif direction == 'down' and self.y < self.world_map.map.shape[1] - 1 and self.world_map.map[self.x, self.y + 1] in self.walkable:
             self.y += 1
+            valid_move = True
         elif direction == 'left' and self.x > 0 and self.world_map.map[self.x - 1, self.y] in self.walkable:
             self.x -= 1
+            valid_move = True
         elif direction == 'right' and self.x < self.world_map.map.shape[0] - 1 and self.world_map.map[self.x + 1, self.y] in self.walkable:
             self.x += 1
+            valid_move = True
         
         overriding = self.world_map.map[self.x, self.y]
         self.world_map.map[self.x, self.y] = self.char_type
-        return overriding
+
+        return valid_move, overriding
 
         
 

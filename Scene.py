@@ -5,12 +5,12 @@ from utils import color_maps, OBJECTS
 from Character import Character, Player
 
 class Map:
-    def __init__(self, width, height, map_size, rnd_value):
+    def __init__(self, width, height, map_size, rnd_value, free_space_prob):
         # Create the grid with obstacles (1 for obstacles, 0 for free space)
         self.width = width
         self.height = height
         self.map_size = map_size
-        self.map = np.random.choice([0, 1], size=(width, height), p=[0.9, 0.1])
+        self.map = np.random.choice([0, 1], size=(width, height), p=[free_space_prob, 1-free_space_prob])
         self.rnd_value = rnd_value
         self.reward_map = np.zeros_like(self.map).astype(float)
         
@@ -33,7 +33,7 @@ class Map:
                 if _map[x, y] == 0:
                     a = 1 - self.reward_map[x, y]
 
-                    color = (basec_olor + .565 * (a * np.zeros((3,)) + (1 - a) * reward_color).astype(int)).tolist()
+                    color = (basec_olor + .465 * (a * np.zeros((3,)) + (1 - a) * reward_color).astype(int)).tolist()
                     color = np.clip(color, 0, 255)
                 else:
                     color = basec_olor
@@ -43,33 +43,35 @@ class Map:
 
 
 class Scene:
-    def __init__(self, window_shape, grid_shape):
+    def __init__(self, window_shape, grid_shape, matrix_state=False, seed=None, num_of_rewards=1, free_space_prob=.9):
         # Initialize Pygame and game window
         pygame.init()
         self.grid_shape = grid_shape
         self.window_shape = window_shape
         self.screen = pygame.display.set_mode((window_shape[0], window_shape[1]))
         pygame.display.set_caption("Window")
+        self.local_rng = np.random.default_rng()  # Independent random generator
         self.clock = pygame.time.Clock()
         self.episode = 1
-        
+        self.matrix_state = matrix_state
         self.font = pygame.font.Font(None, 36)  # Use default font with size 36
-
+        self.free_space_prob = free_space_prob
         # Create game components
         self.cell_size = min(window_shape[0]/grid_shape[0], window_shape[1]/grid_shape[1])
-        self.rnd_value = np.random.randint(9999)
-        self.num_of_rewards = 10
+        self.rnd_value = np.random.randint(9999) if seed is None else seed
+        print(f"Seed: {self.rnd_value}")
+        self.num_of_rewards = num_of_rewards
         self.state = self.reset()
 
-    def reset(self):
+    def reset(self, random_player_position=False):
         self.steps = 0
         np.random.seed(self.rnd_value)
         random.seed(self.rnd_value)
-        self.map = Map(self.grid_shape[0], self.grid_shape[1], self.cell_size, self.rnd_value)
-        pos = self.get_random_position()
-        self.player = Player(position=pos, world_map=self.map, cell_size=self.cell_size, char_type=OBJECTS.player.value)
+        self.map = Map(self.grid_shape[0], self.grid_shape[1], self.cell_size, self.rnd_value, self.free_space_prob)
         self.init_npcs(0)
-        self.init_rewards(self.num_of_rewards)
+        self.init_rewards(self.num_of_rewards, batches=random_player_position)
+        pos = self.get_random_position(true_random=random_player_position)
+        self.player = Player(position=pos, world_map=self.map, cell_size=self.cell_size, char_type=OBJECTS.player.value)
         return self.get_state()
     
     def get_state(self):
@@ -80,16 +82,20 @@ class Scene:
         state = state - 1
         _state[np.arange(state.shape[0]), state] = 1
         
-        state = _state.flatten()
-        # state = _state.astype(int).reshape(self.grid_shape[0], self.grid_shape[1], 4)
+        if self.matrix_state:
+            state = _state.astype(int).reshape(self.grid_shape[0], self.grid_shape[1], 3)
+        else:
+            state = _state.flatten()
 
         return state
           
-    def get_random_position(self):
+    def get_random_position(self, true_random=False):
         free_cells = np.array(self.map.get_free_cells())
-        index = np.random.choice(range(free_cells.__len__()), size=1, replace=False)[0]
-        cell = free_cells[index]
-        return cell
+        if true_random:
+            index = self.local_rng.choice(len(free_cells), size=1, replace=False)[0]
+        else:
+            index = np.random.choice(range(free_cells.__len__()), size=1, replace=False)[0]
+        return free_cells[index]
 
     def init_npcs(self, n):
         npcs = []
@@ -109,13 +115,23 @@ class Scene:
                 effect[x, y] = value
         return effect
 
-    def init_rewards(self, n):
+    def init_rewards(self, n, batches):
         rewards = []
         positions = []
         for _ in range(n):
             pos = self.get_random_position()
-            rewards.append(Character(pos, self.map, self.cell_size, char_type=OBJECTS.reward.value))
             positions.append(pos)
+        
+        if batches:
+            batch_s = 1 + self.local_rng.integers(0, n, size=1)[0]
+            indices = self.local_rng.choice(range(len(positions)), size=batch_s, replace=False)
+            positions = [positions[i] for i in indices]
+            self.reward_batch_size = batch_s
+        else:
+            self.reward_batch_size = n
+
+        for pos in positions:
+            rewards.append(Character(pos, self.map, self.cell_size, char_type=OBJECTS.reward.value))
         positions = np.array(positions).T
         
         for pos in positions.T:
@@ -126,35 +142,32 @@ class Scene:
     
     def step(self, action):
         self.steps += 1
-        # current reward
-        reward = self.map.reward_map[self.player.x, self.player.y]
-        # reward = 0
+
         if action == 0:
-            overriding = self.player.move('up')
+            valid_move, overriding = self.player.move('up')
         elif action == 1:
-            overriding = self.player.move('down')
+            valid_move, overriding = self.player.move('down')
         elif action == 2:
-            overriding = self.player.move('left')
+            valid_move, overriding = self.player.move('left')
         elif action == 3:
-            overriding = self.player.move('right')
+            valid_move, overriding = self.player.move('right')
         
-
-        if overriding == OBJECTS.reward.value:
-            reward = 100
-            self.rewards = [rw for rw in self.rewards if not (rw.x == self.player.x and rw.y == self.player.y)]
-            pos = np.array([self.player.x, self.player.y])
+        if not valid_move:
+            reward = -1
+        elif overriding == OBJECTS.reward.value:
+            reward = 1
             
-            effect = self.get_reward_effect_area(pos)
-            self.map.reward_map -= effect
+            # Remove reward effect area 
+            self.rewards = [rw for rw in self.rewards if not (rw.x == self.player.x and rw.y == self.player.y)]
+            self.map.reward_map -= self.get_reward_effect_area(np.array([self.player.x, self.player.y]))
         else:
-            new_reward = self.map.reward_map[self.player.x, self.player.y]
-            reward = -0.1 + (new_reward - reward) * 100
-
-
+            reward = -0.1
 
         # End condition
-        # done = (self.num_of_rewards - len(self.rewards)) / self.num_of_rewards
-        done = len(self.rewards) == 0
+        done = False
+        if len(self.rewards) == 0:
+            done = True
+            reward = 1
         next_state = self.get_state()
         self.player.reward += reward
         self.draw()
