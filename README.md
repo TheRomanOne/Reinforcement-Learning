@@ -1,8 +1,10 @@
 # Reinforcement Learning: Gridworld Agent
 
-This game controlled by a reinforcement learning agent. The agentgoal of the game is to navigate through the grid while avoiding obstacles and collecting rewards.
+This game is controlled by a reinforcement learning agent. The goal of the game is to collecting the rewards while navigate through and avoiding obstacles.
 
-## Example Visualization
+The agent is trained using a deep q-learning method with a greedy epsilon algorithm for exploration.
+
+## Random level
 
 ![Example Gridworld Visualization](https://github.com/TheRomanOne/Reinforcement-Learning/blob/master/example.png?raw=true)
 
