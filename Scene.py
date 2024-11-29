@@ -13,12 +13,18 @@ class Map:
         self.map = np.random.choice([0, 1], size=(width, height), p=[free_space_prob, 1-free_space_prob])
         self.rnd_value = rnd_value
         self.reward_map = np.zeros_like(self.map).astype(float)
+        self.local_rng = np.random.default_rng()  # Independent random generator
         
     def get_free_cells(self):
         land_indices = np.where(self.map == 0)
         return np.array(list(zip(land_indices[0], land_indices[1])))
 
-    
+    def update_freespace(self, all_free_space):
+        all_free_space = list(set([item for sublist in all_free_space for item in sublist]))
+        for x in range(self.map.shape[0]):
+            for y in range(self.map.shape[1]):
+                if (x, y) not in all_free_space:
+                    self.map[x, y] = OBJECTS.obstable.value
     def draw(self, screen):
         # Draw the grid cells
         for x in range(self.width):
@@ -26,14 +32,14 @@ class Map:
                 _map = np.array(self.map)
                 _map[_map > 1] = 0
 
-                basec_olor = color_maps[_map[x, y]]
-                basec_olor = np.array(basec_olor) * (.97 + .01 * (np.sin(x * y * self.rnd_value)))
+                basec_olor = (np.array(color_maps[_map[x, y]]).astype(float) * (.5 + .5 * np.random.rand())).astype(int)
+                basec_olor = np.array(basec_olor) + .5*(.97 + .01 * (np.sin(x * y * self.rnd_value)))
 
                 reward_color = np.array(color_maps[OBJECTS.reward.value])
                 if _map[x, y] == 0:
                     a = 1 - self.reward_map[x, y]
 
-                    color = (basec_olor + .645 * (a * np.zeros((3,)) + (1 - a) * reward_color).astype(int)).tolist()
+                    color = (basec_olor + (a * np.zeros((3,)) + (1 - a) * reward_color).astype(int)).tolist()
                     color = np.clip(color, 0, 255)
                 else:
                     color = basec_olor
@@ -71,10 +77,13 @@ class Scene:
             random.seed(self.rnd_value)
         self.map = Map(self.grid_shape[0], self.grid_shape[1], self.cell_size, self.rnd_value, self.free_space_prob)
         self.init_npcs(0)
-        self.init_rewards(self.num_of_rewards, batches=random_player_position)
         pos = self.get_random_position(true_random=random_player_position)
         self.player = Player(position=pos, world_map=self.map, cell_size=self.cell_size)
+        all_free_space = self.get_reward_effect_area(pos, 9999)[1]
+        self.map.update_freespace(all_free_space)
+        self.init_rewards(self.num_of_rewards, batches=random_player_position)
         self.open_door = Door((self.player.x, self.player.y), self.cell_size, open=True)
+
         self.draw()#add_gui=False)
         return self.get_state()
     
@@ -122,39 +131,33 @@ class Scene:
         return neighbors
 
 
-    def get_reward_effect_area(self, pos):
+    def get_reward_effect_area(self, pos, dist):
 
         effect = np.zeros_like(self.map.reward_map)
-        dist = 7
+
         visited = []
-        neighbors = self.get_free_neighbors(pos)
+        neighbors = [self.get_free_neighbors(pos)]
+
+        all_neighbors = list(neighbors)
+        level = 0
         while len(neighbors) > 0:
-            n = neighbors[0]
-            x, y = n[0], n[1]
+            current_level = neighbors[0]
+            for n in current_level:
+                if n not in visited:
+                    x, y = n[0], n[1]   
+
+                    visited.append(n)
+                    value = dist - min(dist, np.linalg.norm(np.array([x, y]) - pos)) - level/2
+                    if value > 0:
+                        value = effect[x, y] + .458 * value / dist
+                        effect[x, y] = value 
+                        next_level = self.get_free_neighbors(n)
+                        neighbors.append(next_level)
+                        all_neighbors.append(next_level)
+            level += 1
             neighbors = neighbors[1:]
-
-            if n not in visited:
-                visited.append(n)
-                value = min(dist, np.linalg.norm(np.array([x, y]) - pos))
-                value = dist - value
-                value = effect[x, y] + .5 * value / dist
-                effect[x, y] = value
-
-                neighbors = neighbors + self.get_free_neighbors(n)
-                neighbors = list(set(neighbors))
-        return effect
+        return effect, all_neighbors
         
-    def get_reward_effect_area_old(self, pos):
-        effect = np.zeros_like(self.map.reward_map)
-        dist = 7
-
-        for x in range(self.grid_shape[0]):
-            for y in range(self.grid_shape[1]):
-                value = min(dist, np.linalg.norm(np.array([x, y]) - pos))
-                value = dist - value
-                value = effect[x, y] + .5 * value / dist
-                effect[x, y] = value
-        return effect
 
     def init_rewards(self, n, batches):
         rewards = []
@@ -176,7 +179,7 @@ class Scene:
         positions = np.array(positions).T
         
         for pos in positions.T:
-            effect = self.get_reward_effect_area(pos)
+            effect, _ = self.get_reward_effect_area(pos, dist=15)
             self.map.reward_map += effect
 
         self.rewards = rewards
@@ -193,16 +196,15 @@ class Scene:
         elif action == 3:
             valid_move, overriding = self.player.move('right')
         
+        reward = (self.num_of_rewards - len(self.rewards))/self.num_of_rewards
         if not valid_move:
             reward = -1
         elif overriding == OBJECTS.reward.value:
             # Remove reward effect area 
             self.rewards = [rw for rw in self.rewards if not (rw.x == self.player.x and rw.y == self.player.y)]
-            self.map.reward_map -= self.get_reward_effect_area(np.array([self.player.x, self.player.y]))
-            
-            reward = .5#(self.num_of_rewards - len(self.rewards))/self.num_of_rewards
+            self.map.reward_map -= self.get_reward_effect_area(np.array([self.player.x, self.player.y]), dist=15)[0]
         else:
-            reward = -0.1
+            reward -= 0.1
 
         # End condition
         done = False

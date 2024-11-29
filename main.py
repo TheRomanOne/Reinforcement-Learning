@@ -18,34 +18,38 @@ def check_q():
 def run_session():
     cell_size = 40
     
-    # grid_shape = np.random.uniform(5, 20, (2,)).astype(int)
+    grid_shape = np.random.uniform(5, 20, (2,)).astype(int)
     # grid_shape = (5, 5)
-    grid_shape = (14, 7)# , 12)
+    # grid_shape = (12, 7)# , 12)
+    # grid_shape = (7, 12)# , 12)
     # grid_shape = (7, 7)
     # grid_shape = (12, 12)
-    # grid_shape = (20, 20)
+    # grid_shape = (9, 17)
+    num_of_rewards = 1
+
 
     MAX_STEPS = min(1500, 10 * grid_shape[0] * grid_shape[1])
     window_shape = (grid_shape[0] * cell_size, grid_shape[1] * cell_size)
 
-    use_convolution=True
+    use_convolution=False
     print('Network type:', 'Convolution' if use_convolution else "Fully connected")
     scene = Scene(
         window_shape=window_shape, 
         grid_shape=grid_shape, 
         matrix_state=use_convolution, 
         # seed=2671,
-        # seed=868,
-        num_of_rewards=2,
+        # seed=15,
+        num_of_rewards=num_of_rewards,
         free_space_prob=.55 + .15 * np.random.rand()
     )
 
     agent = DQLAgent(
         state_size=scene.get_state().shape,
         action_size=4,
-        epsilon_decay=0.99,
+        num_of_rewards=num_of_rewards,
+        epsilon_decay=0.9975,
         learning_rate=0.001,
-        gamma=.95,
+        gamma=.98,
         use_convolution=use_convolution
     )
 

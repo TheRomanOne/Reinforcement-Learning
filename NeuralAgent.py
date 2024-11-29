@@ -6,10 +6,10 @@ import numpy as np
 import random
 
 class QNetwork(nn.Module):
-    def __init__(self, state_size, action_size):
+    def __init__(self, state_size, action_size, num_of_rewards):
         super(QNetwork, self).__init__()
         h_plane = int(state_size[0] // 2)
-        s_plane = 64
+        s_plane = 64 * num_of_rewards
         self.fc1 = nn.Linear(state_size[0], h_plane)
         self.bn1 = nn.BatchNorm1d(h_plane)
         self.fc2 = nn.Linear(h_plane, s_plane)
@@ -72,7 +72,7 @@ class QNetworkConv(nn.Module):
         return x
 
 class DQLAgent:
-    def __init__(self, state_size, action_size, learning_rate, gamma, epsilon_decay, epsilon_min=0.01, use_convolution=False):
+    def __init__(self, state_size, action_size, learning_rate, gamma, epsilon_decay, num_of_rewards=1, epsilon_min=0.01, use_convolution=False):
         self.state_size = state_size
         self.action_size = action_size
         self.gamma = gamma
@@ -83,14 +83,14 @@ class DQLAgent:
         self.local_rng = np.random.default_rng()
 
         Model = QNetworkConv if use_convolution else QNetwork
-        self.q_network = Model(state_size, action_size).to(device)
-        self.target_network = Model(state_size, action_size).to(device)
+        self.q_network = Model(state_size, action_size, num_of_rewards).to(device)
+        self.target_network = Model(state_size, action_size, num_of_rewards).to(device)
         self.optimizer = optim.Adam(self.q_network.parameters(), lr=learning_rate)
         
         # Experience replay buffer
         self.memory = []
-        self.max_mem_size = 20000
-        self.batch_size = 16
+        self.max_mem_size = 25000
+        self.batch_size = 128
         self.memory_hash = []
 
     def store_transition(self, state, action, reward, next_state, done):
