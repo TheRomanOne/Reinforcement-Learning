@@ -1,109 +1,167 @@
-import os, warnings
-import numpy as np
+import os
 from NeuralAgent import DQLAgent
 from Scene import Scene
-import matplotlib.pyplot as plt
+from utils import device, capture_screenshot_as_array, plot_progress_with_map, create_video
+import pygame
+import warnings
+import numpy as np
+from datetime import datetime
 
-warnings.filterwarnings("ignore")
-os.system('clear')
-
-"""
-each reward has it's fixed position
-
-while 0.65 < epsilon <0.9:
-    the agent starts every time in a random position with a random subset of total rewards.
-    this can help exploration and collect more efficient data by creating scenes where
-    not all rewards are present and the player is in either position
-else:
-    player starts at the same position with all the rewards and needs to learn to navigate through them
-"""
-
-cell_size = 40
-grid_shape = (7, 7)
-MAX_STEPS = min(1000, 10 * grid_shape[0] * grid_shape[1])
-window_shape = (grid_shape[0] * cell_size, grid_shape[1] * cell_size)
-
-use_convolution=True
-
-scene = Scene(
-    window_shape=window_shape, 
-    grid_shape=grid_shape, 
-    matrix_state=use_convolution, 
-    # seed=1368,
-    num_of_rewards=3,
-    free_space_prob=.75
-)
-
-agent = DQLAgent(
-    state_size=scene.get_state().shape,
-    epsilon_decay=0.9973,
-    gamma=.9,
-    action_size=4,
-    use_convolution=use_convolution
-)
-
-# episodes = 500
-lowest_steps = 99999999
-
-rewards = []
-steps = []
-epsilons = []
-while agent.epsilon > 0.1:
-    state = scene.reset(random_player_position=.65 < agent.epsilon < .9)
-    total_reward = 0
-    losses = []
-    
-    while len(scene.rewards) > 0:
-        if scene.steps > MAX_STEPS:
+def check_q():
+    q = False
+    for event in pygame.event.get():
+        if event.type == pygame.KEYDOWN:
+            q = event.key == pygame.K_q
             break
-        action = agent.act(state)
+    return q
 
-        next_state, reward, done = scene.step(action)
-        agent.store_transition(state, action, reward, next_state, done)
-        loss = agent.train()
-        if loss > -1:
-            losses.append(loss)
-        state = next_state
-        total_reward += reward
+def run_session():
+    cell_size = 40
     
-    rewards.append(total_reward)
-    steps.append(scene.steps)
-    epsilons.append(agent.epsilon)
+    # grid_shape = np.random.uniform(5, 20, (2,)).astype(int)
+    # grid_shape = (5, 5)
+    grid_shape = (14, 7)# , 12)
+    # grid_shape = (7, 7)
+    # grid_shape = (12, 12)
+    # grid_shape = (20, 20)
 
-    collected = scene.reward_batch_size - len(scene.rewards)
-    print(f"Episode {scene.episode} || Reward = {total_reward:.2f} || steps:{scene.steps} || eps = {agent.epsilon:.2f} || {collected}/{scene.reward_batch_size}")
-    scene.episode += 1
-    # print(f"Episode {scene.episode}: Total Reward = {total_reward:.2f}. Steps:{scene.steps}, Epsilon = {agent.epsilon:.2f}, Loss AVG: {(np.sum(np.array(losses))/len(losses)):.2f}")
-    agent.decay_epsilon()
-    if collected == scene.num_of_rewards and scene.steps < lowest_steps:
-        lowest_steps = scene.steps
-        agent.update_target_network()
-        print('updating target q function')
+    MAX_STEPS = min(1500, 10 * grid_shape[0] * grid_shape[1])
+    window_shape = (grid_shape[0] * cell_size, grid_shape[1] * cell_size)
 
-_rewards = np.array(rewards)
-_steps = np.array(steps).astype(float)
-_epsilons = np.array(epsilons)
+    use_convolution=True
+    print('Network type:', 'Convolution' if use_convolution else "Fully connected")
+    scene = Scene(
+        window_shape=window_shape, 
+        grid_shape=grid_shape, 
+        matrix_state=use_convolution, 
+        # seed=2671,
+        # seed=868,
+        num_of_rewards=2,
+        free_space_prob=.55 + .15 * np.random.rand()
+    )
 
-_rewards /= np.linalg.norm(_rewards)
-_steps /= np.linalg.norm(_steps)
-_epsilons /= np.linalg.norm(_epsilons)
+    agent = DQLAgent(
+        state_size=scene.get_state().shape,
+        action_size=4,
+        epsilon_decay=0.99,
+        learning_rate=0.001,
+        gamma=.95,
+        use_convolution=use_convolution
+    )
 
-# Example data
-x = list(range(len(steps)))
+    rewards = []
+    steps = []
+    epsilons = []
+    update_indices = [0]
+    screenshot = None
+    last_complete = 0
+    last_update = 0
+    dones = []
+    lowest_steps = 999
+    use_seed = False
 
-# Plot the data
-plt.figure(figsize=(8, 6))  # Set the figure size
-# plt.plot(x, _rewards, label='rewards', color='blue', linestyle='-')
-plt.plot(x, _steps, label='steps', color='green', linestyle='-')
-# plt.plot(x, _epsilons, label='epsilons', color='green', linestyle=':')
+    # Prepare video handling
+    n = 10
+    recording_checkpoints = [(n-i)/n for i in range(n)] + [.05, .02]
+    recording = False
+    rec_counter = 0
+    max_frames_in_cut = 70
+    video = []
 
-# Add labels, title, and legend
-plt.xlabel('Episodes')
-plt.legend()
+    while agent.epsilon > 0.01:
+        random_player_position=False#.93 < agent.epsilon < .98
 
-# Save the plot as an image
-plt.savefig(f'plot_image_{scene.rnd_value}_{grid_shape}.png', dpi=300)  # Save with high resolution
-plt.close()  # Close the figure to avoid displaying it when run
+        use_seed = True#agent.epsilon < .5 or agent.epsilon > .95
+        
+        state = scene.reset(use_seed, random_player_position)
+        if screenshot is None:
+            screenshot = capture_screenshot_as_array(scene.screen)
 
 
-# scene.run()
+        total_reward = 0
+        losses = []
+        scene.episode += 1
+
+        while scene.steps < MAX_STEPS and len(scene.rewards) > 0:
+            if check_q():
+                return False                 
+
+            action = agent.act(state)
+
+            next_state, reward, done = scene.step(action)
+            scene.draw(gui={
+                'Episode': scene.episode,
+                'Confidence': f"{(1 - agent.epsilon):.2f}",
+            })
+            if not recording and len(recording_checkpoints) > 0 and agent.epsilon < recording_checkpoints[0]:
+                recording = True
+                rec_counter = 0
+            
+            if recording:
+                video.append(capture_screenshot_as_array(scene.screen))
+                rec_counter += 1
+            
+            if rec_counter == max_frames_in_cut:
+                recording = False
+                rec_counter = 0
+                recording_checkpoints = recording_checkpoints[1:]
+
+            agent.store_transition(state, action, reward, next_state, done)
+            
+            loss = agent.train()
+            if loss > -1:
+                losses.append(loss)
+            state = next_state
+            total_reward += reward
+
+        
+        if done:
+            last_complete = 0
+        else:
+            last_complete += 1
+        last_update += 1
+        dones.append(done)
+        rewards.append(total_reward)
+        steps.append(scene.steps)
+        epsilons.append(agent.epsilon)
+
+        collected = scene.reward_batch_size - len(scene.rewards)
+        print(f"{scene.episode} || steps: {scene.steps} || eps: {agent.epsilon:.2f} || {collected}/{scene.reward_batch_size} {" - Pass" if collected==scene.reward_batch_size else ""}{"(REC)" if recording else ''}")
+
+        if last_update > 3 or (len(dones) > 7 and sum(dones[:-7]) > 4):
+            agent.decay_epsilon()
+        # success = sum(dones[-30:])  / len(dones[-30:])
+
+        to_update=False
+        # if agent.epsilon > .6:
+        #     if last_update > 30:
+        #         to_update = True
+        if last_update > 30 or last_update > 10 and scene.steps < lowest_steps*1.1 and agent.epsilon > .1:
+            lowest_steps = scene.steps
+            to_update = True
+
+        if to_update:
+            # lowest_steps = scene.steps
+            # last_complete = 0
+            last_update = 0
+            agent.update_target_network()
+            update_indices.append(scene.episode)
+            print('updating target q function')
+
+
+    title = f"Seed {scene.rnd_value} || Map {grid_shape} || Rewards {scene.num_of_rewards} || Freespace {scene.free_space_prob:.2f}"
+    save_media(video, screenshot, title, steps, epsilons, update_indices)
+    return True
+
+def save_media(frames, screenshot, title, steps, epsilons, update_indices):
+    base_name = img_name = f"plots/{datetime.now().strftime("%d%m%y_%H%M%S")}"
+    create_video(np.array(frames), f'{base_name}.mp4', 24)
+    plot_progress_with_map(f'{base_name}.png', title, steps, epsilons, update_indices, screenshot)
+
+while True:
+    warnings.filterwarnings("ignore")
+    os.system('clear')
+    print("Device:", device)
+    if run_session():
+        break
+    
