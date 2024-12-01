@@ -16,14 +16,14 @@ def check_q():
             break
     return q
 
-def run_session(num_of_rewards, seed, grid_shape):
+def run_session(session_name, num_of_rewards, seed, grid_shape):
     print(seed, shape, num_rewards)
 
     cell_size = 40
     
     # if grid_shape is None:
         # grid_shape = np.random.uniform(7, 20, (2,)).astype(int)
-    # grid_shape = (10, 10)
+    # grid_shape = (9, 9)
         # grid_shape = (12, 7)# , 12)
         # grid_shape = (7, 12)# , 12)
         # grid_shape = (7, 7)
@@ -51,7 +51,7 @@ def run_session(num_of_rewards, seed, grid_shape):
         state_size=scene.get_state().shape,
         action_size=4,
         num_of_rewards=num_of_rewards,
-        epsilon_decay=0.99,
+        epsilon_decay=0.997,
         learning_rate=0.001,
         gamma=.98,
         use_convolution=use_convolution
@@ -70,7 +70,7 @@ def run_session(num_of_rewards, seed, grid_shape):
 
     # Prepare video handling
     n = 95
-    recording_checkpoints = [1.1] + [(n-i)/n for i in range(n)]
+    recording_checkpoints = [(n-i)/n for i in range(n)]
     recording = False
     rec_counter = 0
     max_frames_in_cut = 100
@@ -134,8 +134,10 @@ def run_session(num_of_rewards, seed, grid_shape):
                     current_session_frames = []
             
             scene.draw_gui({
+                'Title:': session_name,
+                'Seed': seed,
                 'Episode': scene.episode,
-                'Confidence': f"{(1 - agent.epsilon):.2f}",
+                'Confidence': f"{(1 - agent.epsilon):.2f}"
             },
             update=True)
 
@@ -177,25 +179,28 @@ def run_session(num_of_rewards, seed, grid_shape):
 
     title = f"Seed {scene.rnd_value} || Map {grid_shape} || Rewards {scene.num_of_rewards} || Freespace {scene.free_space_prob:.2f}"
     
+    s = 5
+    videos = videos[:s] + videos[s:][::4] + videos[-3:]
     video = []
     videos.sort(key=len)
     print('Total runs in video:', len(videos))
-    print('Frames per scene', [len(v) for v in videos])
     max_len = 900
     for v in videos:
         if len(video) < max_len:
             video = v + video 
 
     # video = [item for sublist in videos for item in sublist]
-    if update_indices[-1] == len(epsilons):
-        update_indices = update_indices[:-1]
-        steps = steps[:-1]
+    # if update_indices[-1] == len(steps):
+    #     update_indices = update_indices[:-1]
+    #     steps = steps[:-1]
+    update_indices = update_indices[1:]
+    update_indices = update_indices[:-1]
     save_media(video, screenshot, title, steps, epsilons, update_indices)
     return True
 
 def save_media(frames, screenshot, title, steps, epsilons, update_indices):
     base_name = img_name = f"plots/{datetime.now().strftime("%d%m%y_%H%M%S")}"
-    create_video(np.array(frames), f'{base_name}.mp4', 20)
+    create_video(np.array(frames), f'{base_name}.mp4', fps=30)
     plot_progress_with_map(f'{base_name}.png', title, steps, epsilons, update_indices, screenshot)
 
 
@@ -206,11 +211,12 @@ if __name__ == '__main__':
     parser.add_argument('--s', type=int, nargs='?', default=None, help="seed number")
     parser.add_argument('--w', type=int, nargs='?', default=-1, help="width")
     parser.add_argument('--h', type=int, nargs='?', default=-1, help="height")
-    parser.add_argument('--n', type=int, nargs='?', default=1, help="number of rewards")
+    parser.add_argument('--r', type=int, nargs='?', default=1, help="number of rewards")
+    parser.add_argument('--n', type=str, nargs='?', default="", help="session name")
 
     # Parse the arguments
     args = parser.parse_args()
-
+    session_name = args.n
     width = args.w
     height = args.h
     if width == -1 or height == -1:
@@ -219,12 +225,12 @@ if __name__ == '__main__':
         shape = (width, height)
 
     # Access the arguments
-    num_rewards = max(1, args.n)
+    num_rewards = max(1, args.r)
     seed = args.s
     go_on = True
     while go_on:
         warnings.filterwarnings("ignore")
         os.system('clear')
         print("Device:", device)
-        if run_session(num_rewards, seed, shape):
+        if run_session(session_name, num_rewards, seed, shape):
             go_on = False

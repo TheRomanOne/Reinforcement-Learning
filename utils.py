@@ -88,37 +88,6 @@ def plot_progress_with_map(img_name, title, steps, epsilons, update_indices, map
     plt.close()
     print('Combined plot saved to', img_name)
 
-# def convert_webm_to_mp4(input_path, output_path):
-#     # Open the .webm file
-    
-#     video = cv2.VideoCapture(input_path)
-    
-#     # Get properties of the input video
-#     fps = int(video.get(cv2.CAP_PROP_FPS))
-#     width = int(video.get(cv2.CAP_PROP_FRAME_WIDTH))
-#     height = int(video.get(cv2.CAP_PROP_FRAME_HEIGHT))
-#     fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Codec for mp4
-    
-#     # Create a VideoWriter object for the .mp4 output
-#     out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
-    
-#     while True:
-#         ret, frame = video.read()
-#         if not ret:
-#             break
-#         # Write each frame to the .mp4 file
-#         out.write(frame)
-    
-#     # Release resources
-#     video.release()
-#     out.release()
-#     print(f"Converted {input_path} to {output_path}")
-
-# if __name__ == '__main__':
-#     # Example usage
-#     input_file = "/home/roman/Videos/Screencasts/Screencast from 2024-11-27 19-36-57.webm"
-#     output_file = "output.mp4"
-#     convert_webm_to_mp4(input_file, output_file)
 
 def normalized_image(img):
 

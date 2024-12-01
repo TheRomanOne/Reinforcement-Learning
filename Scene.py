@@ -47,8 +47,9 @@ class Map:
 
                 reward_color = np.array(color_maps[OBJECTS.reward.value])
                 if is_land:
-                    a = 1 - self.reward_map[x, y]
-
+                    m = .5
+                    a = 1 - self.reward_map[x, y] * m
+                    
                     color = (basec_olor + (a * np.zeros((3,)) + (1 - a) * reward_color).astype(int)).tolist()
                     color = np.clip(color, 0, 255)
                 else:
@@ -160,7 +161,7 @@ class Scene:
                     visited.append(n)
                     value = dist - min(dist, np.linalg.norm(np.array([x, y]) - pos)) - level/2
                     if value > 0:
-                        value = effect[x, y] + .458 * value / dist
+                        value = effect[x, y] + value / dist
                         effect[x, y] = value 
                         next_level = self.get_free_neighbors(n)
                         neighbors.append(next_level)
@@ -195,6 +196,8 @@ class Scene:
 
         self.rewards = rewards
     
+    
+
     def step(self, action):
         self.steps += 1
 
@@ -207,25 +210,26 @@ class Scene:
         elif action == 3:
             valid_move, overriding = self.player.move('right')
         
-        reward = (self.num_of_rewards - len(self.rewards))/self.num_of_rewards
+        pos = [self.player.x, self.player.y]
+        # reward = (self.num_of_rewards - len(self.rewards))/self.num_of_rewards
+        reward = self.map.reward_map[*pos]
         if not valid_move:
             reward = -1
         elif overriding == OBJECTS.reward.value:
             # Remove reward effect area 
             self.rewards = [rw for rw in self.rewards if not (rw.x == self.player.x and rw.y == self.player.y)]
-            self.map.reward_map -= self.get_reward_effect_area(np.array([self.player.x, self.player.y]), dist=15)[0]
+            self.map.reward_map -= self.get_reward_effect_area(np.array(pos), dist=15)[0]
         else:
-            reward -= 0.1
+            reward = 0.01
 
         # End condition
         done = False
         if len(self.rewards) == 0:
             done = True
-            reward = 1
         next_state = self.get_state()
 
         return next_state, reward, done
-
+    
     def draw(self, update=False):
         self.screen.fill(color_maps[OBJECTS.land.value])
         
@@ -247,7 +251,7 @@ class Scene:
 
     def draw_gui(self, msg, update=False):
         # Create a smaller font for the GUI
-        f_size = 20
+        f_size = 30
         small_font = pygame.font.Font(None, f_size)  # Adjust the size as needed (smaller number = smaller font)
         
         # Define the color for the text (e.g., light blue)

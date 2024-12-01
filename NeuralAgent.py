@@ -5,43 +5,42 @@ from utils import device
 import numpy as np
 import random
 
-class QNetwork(nn.Module):
-    def __init__(self, state_size, action_size, num_of_rewards):
-        super(QNetwork, self).__init__()
-        h_plane = int(state_size[0] // 2)
-        s_plane = 64 * num_of_rewards
-        self.fc1 = nn.Linear(state_size[0], h_plane)
-        self.bn1 = nn.BatchNorm1d(h_plane)
+class QNet(nn.Module):
+    def __init__(self, input_shape, action_size):
+        super(QNet, self).__init__()
+        h_plane = int(input_shape[0] // 2)
+        s_plane = 64
+        
+        self.fc1 = nn.Linear(input_shape[0], h_plane)
         self.fc2 = nn.Linear(h_plane, s_plane)
+        self.fc3 = nn.Linear(s_plane, action_size)
+        self.relu = nn.ReLU()
+
+        # batch normalizatoipn
+        self.bn1 = nn.BatchNorm1d(h_plane)
         self.bn2 = nn.BatchNorm1d(s_plane)
         
-        # Projection layer for skip connection
-        self.projection = nn.Linear(h_plane, s_plane)
+        # layer for skip connect
+        self.skip = nn.Linear(h_plane, s_plane)
         
-        self.fc3 = nn.Linear(s_plane, action_size)
-        
-        self.relu = nn.ReLU()
     
     def forward(self, state):
-        # Layer 1
         x1 = self.fc1(state)
         x1 = self.bn1(x1)
         x1 = self.relu(x1)
         
-        # Layer 2 with skip connection
         x2 = self.fc2(x1)
         x2 = self.bn2(x2)
         
-        # Project x1 to match x2's shape
-        x1_proj = self.projection(x1)
-        x2 = self.relu(x2 + x1_proj)  # Adding skip connection
+        # skip connection
+        x1_proj = self.skip(x1)
+        x2 = self.relu(x2 + x1_proj)
         
-        # Output layer
         return self.fc3(x2)
     
-class QNetworkConv(nn.Module):
+class QNetConv(nn.Module):
     def __init__(self, input_shape=(15, 7, 3), output_size=4):
-        super(QNetworkConv, self).__init__()
+        super(QNetConv, self).__init__()
         
         # Transposed convolutional layer (deconv) to keep the same spatial dimensions
         self.deconv1 = nn.ConvTranspose2d(in_channels=input_shape[2],out_channels=8,kernel_size=3,stride=1,padding=1)
@@ -81,10 +80,10 @@ class DQLAgent:
         self.epsilon_min = epsilon_min
         self.use_convolution = use_convolution
         self.local_rng = np.random.default_rng()
-
-        Model = QNetworkConv if use_convolution else QNetwork
-        self.q_network = Model(state_size, action_size, num_of_rewards).to(device)
-        self.target_network = Model(state_size, action_size, num_of_rewards).to(device)
+        self.max_injection_count = 16
+        Model = QNetConv if use_convolution else QNet
+        self.q_network = Model(state_size, action_size).to(device)
+        self.target_network = Model(state_size, action_size).to(device)
         self.optimizer = optim.Adam(self.q_network.parameters(), lr=learning_rate)
         
         # Experience replay buffer
@@ -114,8 +113,32 @@ class DQLAgent:
         if len(self.memory) < self.batch_size:
             return -1
         
-        batch = random.sample(self.memory, self.batch_size)
+
+        _, _, rewards, _, _ = zip(*self.memory)
+        rewards = np.array(rewards)
+        indices = np.where(rewards > 0)[0]
+        np.random.shuffle(indices)
+        indices = indices[:self.max_injection_count]
+
+        chosen = [i for i in indices if np.random.rand() > .5]
+        
+        batch = random.sample(self.memory, self.batch_size - len(chosen))
         states, actions, rewards, next_states, dones = zip(*batch)
+
+        if len(chosen) > 0:
+            _batch = [self.memory[i] for i in chosen]
+            _states, _actions, _rewards, _next_states, _dones = zip(*_batch)
+            states = np.array(states + _states)
+            actions = np.array(actions + _actions)
+            rewards = np.array(rewards + _rewards)
+            next_states = np.array(next_states + _next_states)
+            dones = np.array(dones + _dones)
+            
+            np.random.shuffle(states)
+            np.random.shuffle(actions)
+            np.random.shuffle(rewards)
+            np.random.shuffle(next_states)
+            np.random.shuffle(dones)
         
         states = torch.FloatTensor(states).to(device)
         actions = torch.LongTensor(actions).to(device)

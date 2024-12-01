@@ -79,13 +79,14 @@ class Character(Entity):
 
         overriding = self.world_map.map[self.x, self.y]
         self.world_map.map[self.x, self.y] = self.char_type
-
+        
         return valid_move, overriding
     
 class Player(Character):
     def __init__(self, position, world_map, cell_size, img_path='assets/robot.png'):
         super().__init__(position, world_map, cell_size, img_path, OBJECTS.player.value)
         self.walkable.append(OBJECTS.reward.value)
+        self.reward = 0
 
 class Collectable(Entity):
     def __init__(self, position, cell_size, world_map, char_type, img_path='assets/crystals.png'):
