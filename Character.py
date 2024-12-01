@@ -88,7 +88,7 @@ class Player(Character):
         self.walkable.append(OBJECTS.reward.value)
 
 class Collectable(Entity):
-    def __init__(self, position, cell_size, world_map, char_type, img_path='assets/gold_coins.png'):
+    def __init__(self, position, cell_size, world_map, char_type, img_path='assets/crystals.png'):
         super().__init__(position, world_map, cell_size, img_path, char_type)
 
 class Door(Entity):

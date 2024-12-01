@@ -1,4 +1,4 @@
-# Reinforcement Learning: Gridworld Agent
+# **Dria** - Neural reinforced explorational agent
 
 This is a game controlled by a reinforcement learning agent. The goal of the game is to collecting the rewards while navigate through and avoiding obstacles.
 

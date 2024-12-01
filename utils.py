@@ -7,8 +7,8 @@ import cv2
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 _colors = [
-    [0.2, .8, 0.3],  # 0 land
-    [.75, .37, .17],  # 1 obstable
+    [0.1, .7, 0.2],  # 0 land
+    [.65, .27, .07],  # 1 obstable
     [0.3, 0.2, .8],  # 2 player
     [.9, .87, .02],  # 4 reward
     [.8, 0.2, 0.3],  # 3 npc

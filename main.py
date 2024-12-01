@@ -6,6 +6,7 @@ import pygame
 import warnings
 import numpy as np
 from datetime import datetime
+import argparse
 
 def check_q():
     q = False
@@ -15,17 +16,21 @@ def check_q():
             break
     return q
 
-def run_session():
+def run_session(num_of_rewards, seed, grid_shape):
+    print(seed, shape, num_rewards)
+
     cell_size = 40
     
-    grid_shape = np.random.uniform(5, 20, (2,)).astype(int)
-    # grid_shape = (5, 5)
-    # grid_shape = (12, 7)# , 12)
-    # grid_shape = (7, 12)# , 12)
-    # grid_shape = (7, 7)
-    # grid_shape = (12, 12)
-    # grid_shape = (9, 17)
-    num_of_rewards = 1
+    # if grid_shape is None:
+        # grid_shape = np.random.uniform(7, 20, (2,)).astype(int)
+    # grid_shape = (10, 10)
+        # grid_shape = (12, 7)# , 12)
+        # grid_shape = (7, 12)# , 12)
+        # grid_shape = (7, 7)
+        # grid_shape = (10, 21)
+        # grid_shape = (9, 18)
+        # grid_shape = (10, 21)
+    # num_of_rewards = 1
 
 
     MAX_STEPS = min(1500, 10 * grid_shape[0] * grid_shape[1])
@@ -37,8 +42,7 @@ def run_session():
         window_shape=window_shape, 
         grid_shape=grid_shape, 
         matrix_state=use_convolution, 
-        # seed=2671,
-        # seed=15,
+        seed=seed,
         num_of_rewards=num_of_rewards,
         free_space_prob=.55 + .15 * np.random.rand()
     )
@@ -47,7 +51,7 @@ def run_session():
         state_size=scene.get_state().shape,
         action_size=4,
         num_of_rewards=num_of_rewards,
-        epsilon_decay=0.9975,
+        epsilon_decay=0.99,
         learning_rate=0.001,
         gamma=.98,
         use_convolution=use_convolution
@@ -65,19 +69,26 @@ def run_session():
     use_seed = False
 
     # Prepare video handling
-    n = 10
-    recording_checkpoints = [(n-i)/n for i in range(n)] + [.05, .02]
+    n = 95
+    recording_checkpoints = [1.1] + [(n-i)/n for i in range(n)]
     recording = False
     rec_counter = 0
-    max_frames_in_cut = 70
-    video = []
+    max_frames_in_cut = 100
+    videos = []
 
-    while agent.epsilon > 0.01:
+    video_lens = []
+    while agent.epsilon > 0.05:
         random_player_position=False#.93 < agent.epsilon < .98
 
         use_seed = True#agent.epsilon < .5 or agent.epsilon > .95
-        
-        state = scene.reset(use_seed, random_player_position)
+        valid_scene = False
+        while not valid_scene:
+            try:
+                state = scene.reset(use_seed, random_player_position)
+                valid_scene = True
+            except:
+                print("Invalid scene. searching for a new one")
+
         if screenshot is None:
             screenshot = capture_screenshot_as_array(scene.screen)
 
@@ -86,39 +97,55 @@ def run_session():
         losses = []
         scene.episode += 1
 
+        current_session_frames = [screenshot]
+        captured = False
         while scene.steps < MAX_STEPS and len(scene.rewards) > 0:
             if check_q():
                 return False                 
 
             action = agent.act(state)
-
             next_state, reward, done = scene.step(action)
-            scene.draw(gui={
-                'Episode': scene.episode,
-                'Confidence': f"{(1 - agent.epsilon):.2f}",
-            })
-            if not recording and len(recording_checkpoints) > 0 and agent.epsilon < recording_checkpoints[0]:
+            agent.store_transition(state, action, reward, next_state, done)
+
+            scene.draw()
+
+            if scene.steps == 1 and not captured and len(recording_checkpoints) > 0 and agent.epsilon < recording_checkpoints[0]:
                 recording = True
-                rec_counter = 0
             
             if recording:
-                video.append(capture_screenshot_as_array(scene.screen))
-                rec_counter += 1
-            
-            if rec_counter == max_frames_in_cut:
-                recording = False
-                rec_counter = 0
-                recording_checkpoints = recording_checkpoints[1:]
+                current_session_frames.append(capture_screenshot_as_array(scene.screen))
+                rec_counter = len(current_session_frames)
+                if done and rec_counter <= max_frames_in_cut:
+                    if rec_counter not in video_lens:
+                        video_lens.append(rec_counter)
+                        captured = True
+                        recording = False
+                        if scene.steps > max_frames_in_cut:
+                            print('')
+                        # add a few frames of finished state
+                        for _ in range(4):
+                            current_session_frames.append(current_session_frames[-1])
 
-            agent.store_transition(state, action, reward, next_state, done)
+                        videos.append(current_session_frames)
+                    recording_checkpoints = recording_checkpoints[1:]
+                    current_session_frames = []
+                elif len(current_session_frames) == max_frames_in_cut:
+                    recording = False
+                    current_session_frames = []
             
+            scene.draw_gui({
+                'Episode': scene.episode,
+                'Confidence': f"{(1 - agent.epsilon):.2f}",
+            },
+            update=True)
+
             loss = agent.train()
             if loss > -1:
                 losses.append(loss)
             state = next_state
             total_reward += reward
 
-        
+        current_session_frames = []
         if done:
             last_complete = 0
         else:
@@ -130,23 +157,18 @@ def run_session():
         epsilons.append(agent.epsilon)
 
         collected = scene.reward_batch_size - len(scene.rewards)
-        print(f"{scene.episode} || steps: {scene.steps} || eps: {agent.epsilon:.2f} || {collected}/{scene.reward_batch_size} {" - Pass" if collected==scene.reward_batch_size else ""}{"(REC)" if recording else ''}")
+
+        print(f"{scene.episode} || steps: {scene.steps} || eps: {agent.epsilon:.2f} || {collected}/{scene.reward_batch_size} {" - Pass" if collected==scene.reward_batch_size else ""}{" (REC)" if captured else ''}")
 
         if last_update > 3 or (len(dones) > 7 and sum(dones[:-7]) > 4):
             agent.decay_epsilon()
-        # success = sum(dones[-30:])  / len(dones[-30:])
 
         to_update=False
-        # if agent.epsilon > .6:
-        #     if last_update > 30:
-        #         to_update = True
         if last_update > 30 or last_update > 10 and scene.steps < lowest_steps*1.1 and agent.epsilon > .1:
             lowest_steps = scene.steps
             to_update = True
 
         if to_update:
-            # lowest_steps = scene.steps
-            # last_complete = 0
             last_update = 0
             agent.update_target_network()
             update_indices.append(scene.episode)
@@ -154,18 +176,55 @@ def run_session():
 
 
     title = f"Seed {scene.rnd_value} || Map {grid_shape} || Rewards {scene.num_of_rewards} || Freespace {scene.free_space_prob:.2f}"
+    
+    video = []
+    videos.sort(key=len)
+    print('Total runs in video:', len(videos))
+    print('Frames per scene', [len(v) for v in videos])
+    max_len = 900
+    for v in videos:
+        if len(video) < max_len:
+            video = v + video 
+
+    # video = [item for sublist in videos for item in sublist]
+    if update_indices[-1] == len(epsilons):
+        update_indices = update_indices[:-1]
+        steps = steps[:-1]
     save_media(video, screenshot, title, steps, epsilons, update_indices)
     return True
 
 def save_media(frames, screenshot, title, steps, epsilons, update_indices):
     base_name = img_name = f"plots/{datetime.now().strftime("%d%m%y_%H%M%S")}"
-    create_video(np.array(frames), f'{base_name}.mp4', 24)
+    create_video(np.array(frames), f'{base_name}.mp4', 20)
     plot_progress_with_map(f'{base_name}.png', title, steps, epsilons, update_indices, screenshot)
 
-while True:
-    warnings.filterwarnings("ignore")
-    os.system('clear')
-    print("Device:", device)
-    if run_session():
-        break
-    
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description="<seed> ")
+
+    # Make arguments optional with default values
+    parser.add_argument('--s', type=int, nargs='?', default=None, help="seed number")
+    parser.add_argument('--w', type=int, nargs='?', default=-1, help="width")
+    parser.add_argument('--h', type=int, nargs='?', default=-1, help="height")
+    parser.add_argument('--n', type=int, nargs='?', default=1, help="number of rewards")
+
+    # Parse the arguments
+    args = parser.parse_args()
+
+    width = args.w
+    height = args.h
+    if width == -1 or height == -1:
+        shape = np.random.uniform(7, 20, (2,)).astype(int)
+    else:
+        shape = (width, height)
+
+    # Access the arguments
+    num_rewards = max(1, args.n)
+    seed = args.s
+    go_on = True
+    while go_on:
+        warnings.filterwarnings("ignore")
+        os.system('clear')
+        print("Device:", device)
+        if run_session(num_rewards, seed, shape):
+            go_on = False

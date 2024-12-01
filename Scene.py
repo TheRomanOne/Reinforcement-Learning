@@ -11,6 +11,10 @@ class Map:
         self.height = height
         self.map_size = map_size
         self.map = np.random.choice([0, 1], size=(width, height), p=[free_space_prob, 1-free_space_prob])
+        self.map[:,0] = 1
+        self.map[:,-1] = 1
+        self.map[0,:] = 1
+        self.map[-1,:] = 1
         self.rnd_value = rnd_value
         self.reward_map = np.zeros_like(self.map).astype(float)
         self.local_rng = np.random.default_rng()  # Independent random generator
@@ -31,12 +35,18 @@ class Map:
             for y in range(self.height):
                 _map = np.array(self.map)
                 _map[_map > 1] = 0
-
-                basec_olor = (np.array(color_maps[_map[x, y]]).astype(float) * (.5 + .5 * np.random.rand())).astype(int)
+                is_land = _map[x, y] == OBJECTS.land.value
+                basec_olor = np.array(color_maps[_map[x, y]]).astype(float)
+                pseudo_rnd = 1
+                pseudo_rnd = np.sin(458*x/self.width * np.cos(3.26*y/self.height))
+                pseudo_rnd -= int(pseudo_rnd)
+                if is_land:
+                    pseudo_rnd *= .75
+                basec_olor = (basec_olor * (.9 + .1 * pseudo_rnd)).astype(int)
                 basec_olor = np.array(basec_olor) + .5*(.97 + .01 * (np.sin(x * y * self.rnd_value)))
 
                 reward_color = np.array(color_maps[OBJECTS.reward.value])
-                if _map[x, y] == 0:
+                if is_land:
                     a = 1 - self.reward_map[x, y]
 
                     color = (basec_olor + (a * np.zeros((3,)) + (1 - a) * reward_color).astype(int)).tolist()
@@ -64,7 +74,7 @@ class Scene:
         self.free_space_prob = free_space_prob
         # Create game components
         self.cell_size = min(window_shape[0]/grid_shape[0], window_shape[1]/grid_shape[1])
-        self.rnd_value = np.random.randint(9999) if seed is None else seed
+        self.rnd_value = np.random.randint(99999) if seed is None else seed
         print(f"Seed: {self.rnd_value}")
         self.num_of_rewards = num_of_rewards
         self.state = self.reset()
@@ -86,6 +96,7 @@ class Scene:
 
         self.draw()#add_gui=False)
         return self.get_state()
+        
     
     def get_state(self):
         state = self.map.map.flatten()
@@ -215,7 +226,7 @@ class Scene:
 
         return next_state, reward, done
 
-    def draw(self, gui=None):
+    def draw(self, update=False):
         self.screen.fill(color_maps[OBJECTS.land.value])
         
         # Draw the grid and player
@@ -229,14 +240,12 @@ class Scene:
 
         for npc in self.npcs:
             npc.draw(self.screen)
-
-        if gui is not None:
-            self.draw_gui(gui)
         
         # Update the display
-        pygame.display.update()
+        if update:
+            pygame.display.update()
 
-    def draw_gui(self, msg):
+    def draw_gui(self, msg, update=False):
         # Create a smaller font for the GUI
         f_size = 20
         small_font = pygame.font.Font(None, f_size)  # Adjust the size as needed (smaller number = smaller font)
@@ -254,3 +263,6 @@ class Scene:
             # Position the text at the top-left corner
             text_position = (10, 10 + f_size * i)
             self.screen.blit(text_surface, text_position)    
+        
+        if update:
+            pygame.display.update()
