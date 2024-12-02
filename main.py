@@ -42,7 +42,7 @@ def run_session(session_name, num_of_rewards, seed, grid_shape):
     # grid_shape = (9, 9)
         # grid_shape = (12, 7)# , 12)
         # grid_shape = (7, 12)# , 12)
-        # grid_shape = (7, 7)
+    # grid_shape = (9, 9)
         # grid_shape = (10, 21)
         # grid_shape = (9, 18)
         # grid_shape = (10, 21)
@@ -77,7 +77,7 @@ def run_session(session_name, num_of_rewards, seed, grid_shape):
 
     steps = []
     epsilons = []
-    update_indices = [0]
+    update_indices = []
 
     last_complete = 0
     last_update = 0
@@ -85,8 +85,9 @@ def run_session(session_name, num_of_rewards, seed, grid_shape):
     use_seed = False
 
     recorder = Recorder(agent)
+    recorder.assign_screen(scene.screen)
     
-    while agent.epsilon > 0.97:
+    while agent.epsilon > 0.07:
         random_player_position=False#.93 < agent.epsilon < .98
 
         use_seed = True#agent.epsilon < .5 or agent.epsilon > .95
@@ -94,7 +95,6 @@ def run_session(session_name, num_of_rewards, seed, grid_shape):
         while not valid_scene:
             try:
                 state = scene.reset(use_seed, random_player_position)
-                recorder.assign_screen(scene.screen)
                 valid_scene = True
             except:
                 print("Invalid scene. searching for a new one")
@@ -125,13 +125,14 @@ def run_session(session_name, num_of_rewards, seed, grid_shape):
             state = next_state
 
             scene.draw_gui({
+                'Seed': scene.rnd_value,
                 'Title:': session_name,
-                'Seed': seed,
                 'Episode': scene.episode,
-                'Confidence': f"{(1 - agent.epsilon):.2f}",
+                # 'Confidence': f"{(1 - agent.epsilon):.2f}",
                 'Entropy': np.round(entropy, 2),
-                'Reward': np.round(scene.player.reward, 2)
+                # 'Reward': np.round(scene.player.reward, 2)
             },
+            f_size=25,
             update=True)
 
 
@@ -157,6 +158,7 @@ def run_session(session_name, num_of_rewards, seed, grid_shape):
 
 
 if __name__ == '__main__':
+    session_name = "test run"
     parser = argparse.ArgumentParser(description="<seed> ")
 
     # Make arguments optional with default values
@@ -164,7 +166,7 @@ if __name__ == '__main__':
     parser.add_argument('--w', type=int, nargs='?', default=-1, help="width")
     parser.add_argument('--h', type=int, nargs='?', default=-1, help="height")
     parser.add_argument('--r', type=int, nargs='?', default=1, help="number of rewards")
-    parser.add_argument('--n', type=str, nargs='?', default="", help="session name")
+    parser.add_argument('--n', type=str, nargs='?', default=session_name, help="session name")
 
     # Parse the arguments
     args = parser.parse_args()

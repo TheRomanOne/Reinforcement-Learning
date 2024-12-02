@@ -227,7 +227,7 @@ class Scene:
             # h = self.get_state_hash()
             # if h not in self.state_hashes:
             #     self.state_hashes.append(h)
-            #     reward += 0.15
+            #     reward += 0.05
 
             if overriding == OBJECTS.reward.value:
                 # Remove reward effect area 
@@ -263,13 +263,12 @@ class Scene:
         if update:
             pygame.display.update()
 
-    def draw_gui(self, msg, update=False):
+    def draw_gui(self, msg, f_size=30, update=False):
         # Create a smaller font for the GUI
-        f_size = 30
         small_font = pygame.font.Font(None, f_size)  # Adjust the size as needed (smaller number = smaller font)
         
         # Define the color for the text (e.g., light blue)
-        text_color = (50, 50, 50)  # RGB for light blue
+        text_color = (20, 33, 50)  # RGB for light blue
         
         # Format the GUI message
         for i, (name, value) in enumerate(msg.items()):

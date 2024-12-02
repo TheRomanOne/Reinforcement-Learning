@@ -28,18 +28,10 @@ class Recorder:
             if len(video) < max_len:
                 video = v + video 
 
-        update_indices = update_indices[1:]
         update_indices = update_indices[:-1]
-        base_name =  f"plots/{name}"
+        base_name =  f"plots/{name.replace(' ', '_')}"
         create_video(np.array(video), f'{base_name}.mp4', fps=30)
         plot_progress_with_map(f'{base_name}.png', title, steps, epsilons, update_indices, self.screenshot)
-
-        # video
-        # screenshot
-        # title
-        # steps
-        # epsilons
-        # update_indices
 
     def start_new_session(self):
         self.new_session = True
