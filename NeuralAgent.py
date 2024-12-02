@@ -106,7 +106,7 @@ class DQLAgent:
             state = torch.FloatTensor(state).unsqueeze(0).to(device)
             q_values = self.q_network(state)
             probs = torch.nn.functional.softmax(q_values)
-            entropy = -torch.sum(probs * torch.log(probs + 1e-9)).item()
+            entropy = -torch.sum(probs * torch.log(probs + 1e-9)).item() / len(probs[0])
             # entropy = (-torch.sum(probs * torch.log(probs), dim=1)).mean().item()
             # entropy = np.clip(entropy, 0.1, 1)
             self.q_network.train()  # Switch back to training mode (if needed)

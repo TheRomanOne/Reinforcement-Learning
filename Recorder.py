@@ -13,13 +13,13 @@ class Recorder:
         self.max_frames_in_cut = 100
         self.video_lens = []
         n = 95
-        self.recording_checkpoints = [(n-i)/n for i in range(n)]
+        self.recording_checkpoints = [1.1]+[(n-i)/n for i in range(n)]
     
 
     def save_media(self, name, title, steps, epsilons, update_indices):
     
         s = 5
-        videos = videos[:s] + videos[s:][::4] + videos[-3:]
+        videos = self.videos[:s] + self.videos[s:][::4] + self.videos[-3:]
         video = []
         videos.sort(key=len)
         print('Total runs in video:', len(videos))

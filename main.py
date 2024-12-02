@@ -86,7 +86,7 @@ def run_session(session_name, num_of_rewards, seed, grid_shape):
 
     recorder = Recorder(agent)
     
-    while agent.epsilon > 0.05:
+    while agent.epsilon > 0.97:
         random_player_position=False#.93 < agent.epsilon < .98
 
         use_seed = True#agent.epsilon < .5 or agent.epsilon > .95
