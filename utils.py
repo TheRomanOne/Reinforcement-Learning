@@ -44,11 +44,6 @@ def plot_progress(title, steps, update_indices):
 
 
 
-def capture_screenshot_as_array(surface):
-    """Capture the pygame screen as a NumPy array."""
-    screenshot = pygame.surfarray.array3d(surface)  # Shape: (width, height, 3)
-    screenshot = np.transpose(screenshot, (1, 0, 2))  # Transpose to (height, width, 3)
-    return screenshot
 
 def plot_progress_with_map(img_name, title, steps, epsilons, update_indices, map_screenshot):
     steps = np.array(steps)
