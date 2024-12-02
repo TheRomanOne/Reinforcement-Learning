@@ -1,12 +1,13 @@
 import os
 from NeuralAgent import DQLAgent
 from Scene import Scene
-from utils import device, capture_screenshot_as_array, plot_progress_with_map, create_video
+from utils import device
 import pygame
 import warnings
 import numpy as np
 from datetime import datetime
 import argparse
+from Recorder import Recorder
 
 def check_q():
     q = False
@@ -15,6 +16,21 @@ def check_q():
             q = event.key == pygame.K_q
             break
     return q
+
+def update_if_required(last_update, lowest_steps, steps, episode, agent, update_indices) :
+    last_update += 1
+    to_update=False
+    if last_update > 30 or last_update > 10 and steps < lowest_steps*1.1 and agent.epsilon > .1:
+        lowest_steps = steps
+        to_update = True
+
+    if to_update:
+        last_update = 0
+        agent.update_target_network()
+        update_indices.append(episode)
+        print('updating target q function')
+    
+    return last_update
 
 def run_session(session_name, num_of_rewards, seed, grid_shape):
     print(seed, shape, num_rewards)
@@ -54,29 +70,22 @@ def run_session(session_name, num_of_rewards, seed, grid_shape):
         epsilon_decay=0.997,
         learning_rate=0.001,
         gamma=.98,
-        use_convolution=use_convolution
+        use_convolution=use_convolution,
+        epsilon_min=.05,
+        epsilon_max = .9
     )
 
-    rewards = []
     steps = []
     epsilons = []
     update_indices = [0]
-    screenshot = None
+
     last_complete = 0
     last_update = 0
-    dones = []
     lowest_steps = 999
     use_seed = False
 
-    # Prepare video handling
-    n = 95
-    recording_checkpoints = [(n-i)/n for i in range(n)]
-    recording = False
-    rec_counter = 0
-    max_frames_in_cut = 100
-    videos = []
-
-    video_lens = []
+    recorder = Recorder(agent)
+    
     while agent.epsilon > 0.05:
         random_player_position=False#.93 < agent.epsilon < .98
 
@@ -85,123 +94,66 @@ def run_session(session_name, num_of_rewards, seed, grid_shape):
         while not valid_scene:
             try:
                 state = scene.reset(use_seed, random_player_position)
+                recorder.assign_screen(scene.screen)
                 valid_scene = True
             except:
                 print("Invalid scene. searching for a new one")
 
-        if screenshot is None:
-            screenshot = capture_screenshot_as_array(scene.screen)
 
-
-        total_reward = 0
         losses = []
         scene.episode += 1
 
-        current_session_frames = [screenshot]
-        captured = False
+        recorder.start_new_session()
+        entropies = []
         while scene.steps < MAX_STEPS and len(scene.rewards) > 0:
             if check_q():
                 return False                 
 
-            action = agent.act(state)
+            # action = agent.act(state)
+            action, entropy = agent.act_with_entropy(state)
             next_state, reward, done = scene.step(action)
             agent.store_transition(state, action, reward, next_state, done)
 
+            # Render
             scene.draw()
+            recorder.record(done)            
 
-            if scene.steps == 1 and not captured and len(recording_checkpoints) > 0 and agent.epsilon < recording_checkpoints[0]:
-                recording = True
-            
-            if recording:
-                current_session_frames.append(capture_screenshot_as_array(scene.screen))
-                rec_counter = len(current_session_frames)
-                if done and rec_counter <= max_frames_in_cut:
-                    if rec_counter not in video_lens:
-                        video_lens.append(rec_counter)
-                        captured = True
-                        recording = False
-                        if scene.steps > max_frames_in_cut:
-                            print('')
-                        # add a few frames of finished state
-                        for _ in range(4):
-                            current_session_frames.append(current_session_frames[-1])
+            loss = agent.train()
+            entropies.append(entropy)
+            if loss > -1:
+                losses.append(loss)
+            state = next_state
 
-                        videos.append(current_session_frames)
-                    recording_checkpoints = recording_checkpoints[1:]
-                    current_session_frames = []
-                elif len(current_session_frames) == max_frames_in_cut:
-                    recording = False
-                    current_session_frames = []
-            
             scene.draw_gui({
                 'Title:': session_name,
                 'Seed': seed,
                 'Episode': scene.episode,
-                'Confidence': f"{(1 - agent.epsilon):.2f}"
+                'Confidence': f"{(1 - agent.epsilon):.2f}",
+                'Entropy': np.round(entropy, 2),
+                'Reward': np.round(scene.player.reward, 2)
             },
             update=True)
 
-            loss = agent.train()
-            if loss > -1:
-                losses.append(loss)
-            state = next_state
-            total_reward += reward
 
-        current_session_frames = []
-        if done:
-            last_complete = 0
-        else:
-            last_complete += 1
-        last_update += 1
-        dones.append(done)
-        rewards.append(total_reward)
+        mean_entropy = np.array(entropies).mean()
+        agent.adjust_epsilon(mean_entropy)
+                
+        if done: last_complete = 0
+        else: last_complete += 1
+
         steps.append(scene.steps)
         epsilons.append(agent.epsilon)
 
+        last_update = update_if_required(last_update, lowest_steps, scene.steps, scene.episode, agent, update_indices)
+
         collected = scene.reward_batch_size - len(scene.rewards)
-
-        print(f"{scene.episode} || steps: {scene.steps} || eps: {agent.epsilon:.2f} || {collected}/{scene.reward_batch_size} {" - Pass" if collected==scene.reward_batch_size else ""}{" (REC)" if captured else ''}")
-
-        if last_update > 3 or (len(dones) > 7 and sum(dones[:-7]) > 4):
-            agent.decay_epsilon()
-
-        to_update=False
-        if last_update > 30 or last_update > 10 and scene.steps < lowest_steps*1.1 and agent.epsilon > .1:
-            lowest_steps = scene.steps
-            to_update = True
-
-        if to_update:
-            last_update = 0
-            agent.update_target_network()
-            update_indices.append(scene.episode)
-            print('updating target q function')
-
-
-    title = f"Seed {scene.rnd_value} || Map {grid_shape} || Rewards {scene.num_of_rewards} || Freespace {scene.free_space_prob:.2f}"
+        print(f"{scene.episode} || steps: {scene.steps} || entropy: {mean_entropy:.2f} || eps: {agent.epsilon:.2f} || {collected}/{scene.reward_batch_size} {" - Pass" if collected==scene.reward_batch_size else ""}{" (REC)" if recorder.captured else ''}")
     
-    s = 5
-    videos = videos[:s] + videos[s:][::4] + videos[-3:]
-    video = []
-    videos.sort(key=len)
-    print('Total runs in video:', len(videos))
-    max_len = 900
-    for v in videos:
-        if len(video) < max_len:
-            video = v + video 
-
-    # video = [item for sublist in videos for item in sublist]
-    # if update_indices[-1] == len(steps):
-    #     update_indices = update_indices[:-1]
-    #     steps = steps[:-1]
-    update_indices = update_indices[1:]
-    update_indices = update_indices[:-1]
-    save_media(video, screenshot, title, steps, epsilons, update_indices)
+    
+    title = f"Seed {scene.rnd_value} || Map {grid_shape} || Rewards {scene.num_of_rewards} || Freespace {scene.free_space_prob:.2f}"
+    recorder.save_media(session_name, title, steps, epsilons, update_indices)
     return True
 
-def save_media(frames, screenshot, title, steps, epsilons, update_indices):
-    base_name = img_name = f"plots/{datetime.now().strftime("%d%m%y_%H%M%S")}"
-    create_video(np.array(frames), f'{base_name}.mp4', fps=30)
-    plot_progress_with_map(f'{base_name}.png', title, steps, epsilons, update_indices, screenshot)
 
 
 if __name__ == '__main__':

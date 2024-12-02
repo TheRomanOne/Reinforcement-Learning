@@ -83,6 +83,7 @@ class Scene:
 
     def reset(self, use_seed=True, random_player_position=False):
         self.steps = 0
+        self.state_hashes = []
         if use_seed:
             np.random.seed(self.rnd_value)
             random.seed(self.rnd_value)
@@ -97,7 +98,9 @@ class Scene:
 
         self.draw()#add_gui=False)
         return self.get_state()
-        
+    
+    def get_state_hash(self):
+        return hash(tuple(self.map.map.flatten()))
     
     def get_state(self):
         state = self.map.map.flatten()
@@ -200,6 +203,7 @@ class Scene:
 
     def step(self, action):
         self.steps += 1
+        currect_reward = self.map.reward_map[self.player.x, self.player.y]
 
         if action == 0:
             valid_move, overriding = self.player.move('up')
@@ -210,24 +214,34 @@ class Scene:
         elif action == 3:
             valid_move, overriding = self.player.move('right')
         
-        pos = [self.player.x, self.player.y]
         # reward = (self.num_of_rewards - len(self.rewards))/self.num_of_rewards
-        reward = self.map.reward_map[*pos]
+        # reward = 1
+        
         if not valid_move:
             reward = -1
-        elif overriding == OBJECTS.reward.value:
-            # Remove reward effect area 
-            self.rewards = [rw for rw in self.rewards if not (rw.x == self.player.x and rw.y == self.player.y)]
-            self.map.reward_map -= self.get_reward_effect_area(np.array(pos), dist=15)[0]
         else:
-            reward = 0.01
+            pos = [self.player.x, self.player.y]
+            reward = -.05#currect_reward - self.map.reward_map[*pos]
+            
+            # h = self.get_state_hash()
+            # if h not in self.state_hashes:
+            #     self.state_hashes.append(h)
+            #     reward += 0.15
+
+            if overriding == OBJECTS.reward.value:
+                # Remove reward effect area 
+                reward = 1
+                self.rewards = [rw for rw in self.rewards if not (rw.x == self.player.x and rw.y == self.player.y)]
+                self.map.reward_map -= self.get_reward_effect_area(np.array(pos), dist=15)[0]
+                            
 
         # End condition
         done = False
         if len(self.rewards) == 0:
             done = True
+        
         next_state = self.get_state()
-
+        self.player.reward += reward
         return next_state, reward, done
     
     def draw(self, update=False):
