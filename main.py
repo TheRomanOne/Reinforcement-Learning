@@ -137,7 +137,8 @@ def run_session(session_name, num_of_rewards, seed, grid_shape):
                 'Title:': session_name,
                 'Seed': seed,
                 'Episode': scene.episode,
-                'Confidence': f"{(1 - agent.epsilon):.2f}"
+                'Confidence': f"{(1 - agent.epsilon):.2f}",
+                'Reward': np.round(scene.player.reward, 2)
             },
             update=True)
 
@@ -160,7 +161,7 @@ def run_session(session_name, num_of_rewards, seed, grid_shape):
 
         collected = scene.reward_batch_size - len(scene.rewards)
 
-        print(f"{scene.episode} || steps: {scene.steps} || eps: {agent.epsilon:.2f} || {collected}/{scene.reward_batch_size} {" - Pass" if collected==scene.reward_batch_size else ""}{" (REC)" if captured else ''}")
+        print(f"{scene.episode} || steps: {scene.steps} || eps: {agent.epsilon:.2f} || Reward: {np.round(scene.player.reward, 2)} || {collected}/{scene.reward_batch_size} {" - Pass" if collected==scene.reward_batch_size else ""}{" (REC)" if captured else ''}")
 
         if last_update > 3 or (len(dones) > 7 and sum(dones[:-7]) > 4):
             agent.decay_epsilon()
@@ -195,11 +196,11 @@ def run_session(session_name, num_of_rewards, seed, grid_shape):
     #     steps = steps[:-1]
     update_indices = update_indices[1:]
     update_indices = update_indices[:-1]
-    save_media(video, screenshot, title, steps, epsilons, update_indices)
+    save_media(session_name, video, screenshot, title, steps, epsilons, update_indices)
     return True
 
-def save_media(frames, screenshot, title, steps, epsilons, update_indices):
-    base_name = img_name = f"plots/{datetime.now().strftime("%d%m%y_%H%M%S")}"
+def save_media(name, frames, screenshot, title, steps, epsilons, update_indices):
+    base_name = f"plots/{name.replace(' ', '_')}"
     create_video(np.array(frames), f'{base_name}.mp4', fps=30)
     plot_progress_with_map(f'{base_name}.png', title, steps, epsilons, update_indices, screenshot)
 

@@ -191,7 +191,7 @@ class Scene:
         positions = np.array(positions).T
         
         for pos in positions.T:
-            effect, _ = self.get_reward_effect_area(pos, dist=15)
+            effect, _ = self.get_reward_effect_area(pos, dist=30)
             self.map.reward_map += effect
 
         self.rewards = rewards
@@ -201,6 +201,7 @@ class Scene:
     def step(self, action):
         self.steps += 1
 
+        old_reward = self.map.reward_map[self.player.x, self.player.y]
         if action == 0:
             valid_move, overriding = self.player.move('up')
         elif action == 1:
@@ -212,24 +213,24 @@ class Scene:
         
         pos = [self.player.x, self.player.y]
         # reward = (self.num_of_rewards - len(self.rewards))/self.num_of_rewards
-        reward = self.map.reward_map[*pos]
+        reward = old_reward - self.map.reward_map[*pos]
+
         if not valid_move:
             reward = -1
         elif overriding == OBJECTS.reward.value:
             # Remove reward effect area 
             self.rewards = [rw for rw in self.rewards if not (rw.x == self.player.x and rw.y == self.player.y)]
-            self.map.reward_map -= self.get_reward_effect_area(np.array(pos), dist=15)[0]
+            self.map.reward_map -= self.get_reward_effect_area(np.array(pos), dist=30)[0]
         else:
-            reward = 0.01
+            reward -= 0.005
 
         # End condition
         done = False
         if len(self.rewards) == 0:
             done = True
         next_state = self.get_state()
-
+        self.player.reward += reward
         return next_state, reward, done
-    
     def draw(self, update=False):
         self.screen.fill(color_maps[OBJECTS.land.value])
         
