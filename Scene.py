@@ -31,11 +31,12 @@ class Map:
                     self.map[x, y] = OBJECTS.obstable.value
                     
     def draw(self, screen):
+        screen.fill(color_maps[OBJECTS.land.value])
         # Draw the grid cells
+        _map = np.array(self.map)
+        _map[_map > 1] = OBJECTS.land.value
         for x in range(self.width):
             for y in range(self.height):
-                _map = np.array(self.map)
-                _map[_map > 1] = 0
                 is_land = _map[x, y] == OBJECTS.land.value
                 basec_olor = np.array(color_maps[_map[x, y]]).astype(float)
                 pseudo_rnd = 1
@@ -85,7 +86,7 @@ class Scene:
 
     def reset(self, use_seed=True, random_player_position=False):
         self.steps = 0
-        self.state_hashes = []
+        self.state_hashes = set()
         if use_seed:
             np.random.seed(self.rnd_value)
             random.seed(self.rnd_value)
@@ -94,6 +95,7 @@ class Scene:
         pos = self.get_random_position(true_random=random_player_position)
         self.player = Player(position=pos, world_map=self.map, cell_size=self.cell_size)
         all_free_space = self.get_reward_effect_area(pos, 9999)[1]
+        all_free_space.append(tuple(pos))
         self.map.update_freespace(all_free_space)
         self.init_rewards(self.num_of_rewards, batches=random_player_position)
         self.open_door = Door((self.player.x, self.player.y), self.cell_size, open=True)
@@ -151,18 +153,25 @@ class Scene:
 
 
     def get_reward_effect_area(self, pos, dist):
-
+        """
+        run in console to check reward map
+        
+        power = 3
+        l = (np.array(list(range(1, 11)))/10) ** power
+        print("reward array", l)
+        print("reward intervals between levels", np.array([x - l[i-1:i] for i, x in enumerate(l)][1:]).T[0])
+        """
         effect = np.zeros_like(self.map.reward_map)
 
         visited = [tuple(pos)]
         current_neighbors = self.get_free_neighbors(pos)
         next_neighbors = []
         all_neighbors = list(current_neighbors)
-        level = 0
+        level = 1
         
         effect[*pos] = effect[*pos] + 1
         while len(current_neighbors) > 0:
-            value = ((dist - level)/dist) ** 2
+            value = ((dist - level)/dist) ** 3
             for n in current_neighbors:
                 if n not in visited:
                     visited.append(n)
@@ -184,8 +193,11 @@ class Scene:
     def init_rewards(self, n, batches):
         rewards = []
         positions = []
+        player_pos = (self.player.x, self.player.y)
         for _ in range(n):
-            pos = self.get_random_position()
+            pos = player_pos
+            while pos == player_pos:
+                pos = tuple(self.get_random_position())
             positions.append(pos)
         
         if batches:
@@ -212,30 +224,20 @@ class Scene:
         self.steps += 1
 
         # old_reward = self.map.reward_map[self.player.x, self.player.y]
-        if action == 0:
-            valid_move, overriding = self.player.move('up')
-        elif action == 1:
-            valid_move, overriding = self.player.move('down')
-        elif action == 2:
-            valid_move, overriding = self.player.move('left')
-        elif action == 3:
-            valid_move, overriding = self.player.move('right')
-        
-        # reward = (self.num_of_rewards - len(self.rewards))/self.num_of_rewards
-        # reward = 1
+        valid_move, new_cell = self.player.move({0: 'up', 1: 'down', 2: 'left', 3: 'right' }[action])
+        reward = -.1
         
         if not valid_move:
             reward = -1
         else:
             pos = [self.player.x, self.player.y]
-            reward = -.05#currect_reward - self.map.reward_map[*pos]
-            
-            # h = self.get_state_hash()
-            # if h not in self.state_hashes:
-            #     self.state_hashes.append(h)
-            #     reward += 0.05
+            h = self.get_state_hash()
+            if h not in self.state_hashes:
+                self.state_hashes.add(h)
+                novelty_bonus = 1 / (1 + len(self.state_hashes))  # Decrease as the agent discovers more states
+                reward += novelty_bonus
 
-            if overriding == OBJECTS.reward.value:
+            if new_cell == OBJECTS.reward.value:
                 # Remove reward effect area 
                 reward = 1
                 self.rewards = [rw for rw in self.rewards if not (rw.x == self.player.x and rw.y == self.player.y)]
@@ -251,7 +253,6 @@ class Scene:
         self.player.reward += reward
         return next_state, reward, done
     def draw(self, update=False):
-        self.screen.fill(color_maps[OBJECTS.land.value])
         
         # Draw the grid and player
         self.map.draw(self.screen)

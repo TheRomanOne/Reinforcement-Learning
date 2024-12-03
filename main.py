@@ -33,6 +33,7 @@ def update_if_required(last_update, lowest_steps, steps, episode, agent, update_
     return last_update
 
 def run_session(session_name, num_of_rewards, seed, grid_shape):
+    print('Session name:', session_name)
     print(seed, shape, num_rewards)
 
     cell_size = 40
@@ -86,7 +87,7 @@ def run_session(session_name, num_of_rewards, seed, grid_shape):
 
     recorder = Recorder(agent)
     recorder.assign_screen(scene.screen)
-    
+    all_entropies = []
     while agent.epsilon > 0.07:
         random_player_position=False#.93 < agent.epsilon < .98
 
@@ -120,7 +121,7 @@ def run_session(session_name, num_of_rewards, seed, grid_shape):
                 'Title:': session_name,
                 'Seed': scene.rnd_value,
                 'Episode': scene.episode,
-                # 'Confidence': f"{(1 - agent.epsilon):.2f}",
+                'Epsilon': f"{(agent.epsilon):.2f}",
                 'Entropy': np.round(entropy, 2),
                 'Reward': np.round(scene.player.reward, 2)
             },
@@ -135,7 +136,7 @@ def run_session(session_name, num_of_rewards, seed, grid_shape):
             state = next_state
 
 
-
+        all_entropies.append(entropies)
         mean_entropy = np.array(entropies).mean()
         agent.adjust_epsilon(mean_entropy)
                 
@@ -145,14 +146,15 @@ def run_session(session_name, num_of_rewards, seed, grid_shape):
         steps.append(scene.steps)
         epsilons.append(agent.epsilon)
 
-        last_update = update_if_required(last_update, lowest_steps, scene.steps, scene.episode, agent, update_indices)
+        if agent.epsilon > .1:
+            last_update = update_if_required(last_update, lowest_steps, scene.steps, scene.episode, agent, update_indices)
 
         collected = scene.reward_batch_size - len(scene.rewards)
-        print(f"{scene.episode} || steps: {scene.steps} || entropy: {mean_entropy:.2f} || eps: {agent.epsilon:.2f} || {collected}/{scene.reward_batch_size} {" - Pass" if collected==scene.reward_batch_size else ""}{" (REC)" if recorder.captured else ''}")
+        print(f"{scene.episode} || steps: {scene.steps} || entropy: {mean_entropy:.2f} || reward: {scene.player.reward:.2f} || eps: {agent.epsilon:.2f} || {collected}/{scene.reward_batch_size} {" - Pass" if collected==scene.reward_batch_size else ""}{" (REC)" if recorder.captured else ''}")
     
     
     title = f"Seed {scene.rnd_value} || Map {grid_shape} || Rewards {scene.num_of_rewards} || Freespace {scene.free_space_prob:.2f}"
-    recorder.save_media(session_name, title, steps, epsilons, update_indices)
+    recorder.save_media(session_name, title, steps, epsilons, all_entropies, update_indices)
     return True
 
 
@@ -160,7 +162,6 @@ def run_session(session_name, num_of_rewards, seed, grid_shape):
 if __name__ == '__main__':
     session_name = "test run"
     parser = argparse.ArgumentParser(description="<seed> ")
-
     # Make arguments optional with default values
     parser.add_argument('--s', type=int, nargs='?', default=None, help="seed number")
     parser.add_argument('--w', type=int, nargs='?', default=-1, help="width")

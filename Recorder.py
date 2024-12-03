@@ -16,7 +16,7 @@ class Recorder:
         self.recording_checkpoints = [1.1]+[(n-i)/n for i in range(n)]
     
 
-    def save_media(self, name, title, steps, epsilons, update_indices):
+    def save_media(self, name, title, steps, epsilons, entropies, update_indices):
     
         s = 5
         videos = self.videos[:s] + self.videos[s:][::4] + self.videos[-3:]
@@ -30,8 +30,57 @@ class Recorder:
 
         update_indices = update_indices[:-1]
         base_name =  f"plots/{name.replace(' ', '_')}"
-        create_video(np.array(video), f'{base_name}.mp4', fps=30)
-        plot_progress_with_map(f'{base_name}.png', title, steps, epsilons, update_indices, self.screenshot)
+        # create_video(np.array(video), f'{base_name}.mp4', fps=30)
+        
+
+        episodes = np.array(range(len(entropies)))
+        steps = np.array(steps)
+        plot = [(episodes, steps, 'green', 'Steps')]
+        scatter = [(episodes[update_indices], steps[update_indices], 10, 'red', 'Updated Indices')]
+
+        plot_progress_with_map(
+            f'{base_name}_steps.png', title,
+            map_screenshot=self.screenshot,
+            x_label='Episode',
+            y_label='Steps"',
+            to_scatter=scatter,
+            to_plot=plot,
+        )
+        # plot_progress_with_map(, title, "Act", 'Entropy', 'blue', entropies, range(len(entropies)), update_indices, self.screenshot)
+
+        start_session = []
+        end_session = []
+        ents = []
+        means = []
+        for e in entropies:
+            start_session.append(len(ents))
+            end_session.append(len(ents) + len(e) - 1)
+            ents = ents + e
+            means.append(np.array(e).mean())
+
+        ents = np.array(ents)
+        
+        # plot entropies
+        acts = np.array(range(len(ents)))
+        # plot = [(acts, ents, 'blue', 'Steps')]
+        # scatter = [
+        #     (acts[start_session], ents[start_session], 20, 'red', 'Level Begin'),
+        #     (acts[end_session], ents[end_session], 20, 'green', 'Level End')
+        # ]
+        
+        # plot entropy means
+        plot = [(episodes, means, 'blue', 'Entropy mean')]
+        scatter = [(episodes[update_indices], plot[update_indices], 10, 'red', 'Updated Indices')]
+
+        plot_progress_with_map(
+            f'{base_name}_entropy.png',
+            title='Entropy',
+            map_screenshot=self.screenshot,
+            x_label='Act',
+            y_label='Entropy"',
+            to_scatter=scatter,
+            to_plot=plot,
+        )
 
     def start_new_session(self):
         self.new_session = True

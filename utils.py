@@ -45,9 +45,10 @@ def plot_progress(title, steps, update_indices):
 
 
 
-def plot_progress_with_map(img_name, title, steps, epsilons, update_indices, map_screenshot):
-    steps = np.array(steps)
-    epsilons = np.array(epsilons)
+# def plot_progress_with_map(img_name, title, x_label, y_label, color, steps, epsilons, to_scatter, map_screenshot):
+def plot_progress_with_map(img_name, title, x_label, y_label, to_plot, to_scatter, map_screenshot):
+    # steps = np.array(steps)
+    # epsilons = np.array(epsilons)
 
     # Determine aspect ratio of the map screenshot
     screenshot_aspect = map_screenshot.shape[1] / map_screenshot.shape[0]
@@ -65,12 +66,18 @@ def plot_progress_with_map(img_name, title, steps, epsilons, update_indices, map
     axs[0].set_title("Map", fontsize=14)
 
     # Plot the progress
-    axs[1].plot(epsilons, steps, label='steps', color='green', linestyle='-')
-    axs[1].scatter(epsilons[update_indices], steps[update_indices], s=10, color='red', label='target update')
-    axs[1].invert_xaxis()
+    for p in to_plot:
+        x, y, c, l = p
+        axs[1].plot(x, y, label=l, color=c, linestyle='-')
+
+    for u_i in to_scatter:
+        x, y, s, c, l = u_i
+        axs[1].scatter(x, y, s=s, color=c, label=l)
+    # axs[1].scatter(epsilons[update_indices_2], steps[update_indices_2], s=10, color='green', label='target update')
+    # axs[1].invert_xaxis()
     axs[1].set_title(title, fontsize=14)
-    axs[1].set_xlabel('Epsilon', fontsize=12)
-    axs[1].set_ylabel('Steps', fontsize=12)
+    axs[1].set_xlabel(x_label, fontsize=12)
+    axs[1].set_ylabel(y_label, fontsize=12)
     axs[1].legend(fontsize=10)
 
     # Adjust layout to minimize whitespace

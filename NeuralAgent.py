@@ -185,7 +185,7 @@ class DQLAgent:
         # self.epsilon = np.clip(self.epsilon, 0, 1)
         # self.epsilon = np.clip(self.epsilon_max - entropy * self.epsilon_decay, self.epsilon_min, self.epsilon_max)
 
-        # self.adjust_epsilon(entropy)
+        # self.adjust_epsilon(0)
         # Compute loss and update the network
         q_values = q_values.gather(1, actions.unsqueeze(1)).squeeze()
         loss = nn.MSELoss()(q_values, target_q_values)
@@ -196,7 +196,10 @@ class DQLAgent:
         return loss.item()
         
     def adjust_epsilon(self, entropy):
-        self.epsilon *= self.epsilon_decay
+        target_entropy = 1.3
+        entropy_diff = 0#entropy - target_entropy
+        eps = (self.epsilon - .333 * entropy_diff) * self.epsilon_decay
+        self.epsilon = np.clip(eps, 0, 1)
         # self.epsilon = (1 - (entropy-1.2))
         # self.epsilon *= self.epsilon_decay
         # alpha = 0.5  # Learning rate for epsilon adjustment
