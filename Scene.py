@@ -5,12 +5,12 @@ from utils import color_maps, OBJECTS
 from Character import Player, Collectable, Door
 
 class Map:
-    def __init__(self, width, height, map_size, rnd_value, free_space_prob):
+    def __init__(self, shape, map_size, rnd_value, free_space_prob):
         # Create the grid with obstacles (1 for obstacles, 0 for free space)
-        self.width = width
-        self.height = height
+        self.width = shape[0]
+        self.height = shape[1]
         self.map_size = map_size
-        self.map = np.random.choice([0, 1], size=(width, height), p=[free_space_prob, 1-free_space_prob])
+        self.map = np.random.choice([0, 1], size=shape, p=[free_space_prob, 1-free_space_prob])
         self.map[:,0] = 1
         self.map[:,-1] = 1
         self.map[0,:] = 1
@@ -24,11 +24,12 @@ class Map:
         return np.array(list(zip(land_indices[0], land_indices[1])))
 
     def update_freespace(self, all_free_space):
-        all_free_space = list(set([item for sublist in all_free_space for item in sublist]))
+        # all_free_space = list(set([item for sublist in all_free_space for item in sublist]))
         for x in range(self.map.shape[0]):
             for y in range(self.map.shape[1]):
                 if (x, y) not in all_free_space:
                     self.map[x, y] = OBJECTS.obstable.value
+                    
     def draw(self, screen):
         # Draw the grid cells
         for x in range(self.width):
@@ -43,11 +44,11 @@ class Map:
                 if is_land:
                     pseudo_rnd *= .75
                 basec_olor = (basec_olor * (.9 + .1 * pseudo_rnd)).astype(int)
-                basec_olor = np.array(basec_olor) + .5*(.97 + .01 * (np.sin(x * y * self.rnd_value)))
+                basec_olor = np.array(basec_olor) + (.97 + .01 * (np.sin(x * y * self.rnd_value)))
 
                 reward_color = np.array(color_maps[OBJECTS.reward.value])
                 if is_land:
-                    m = .5
+                    m = .7
                     a = 1 - self.reward_map[x, y] * m
                     
                     color = (basec_olor + (a * np.zeros((3,)) + (1 - a) * reward_color).astype(int)).tolist()
@@ -71,6 +72,7 @@ class Scene:
         self.clock = pygame.time.Clock()
         self.episode = 0
         self.matrix_state = matrix_state
+        self.reward_effect_distance = 10
         self.font = pygame.font.Font(None, 36)  # Use default font with size 36
         self.free_space_prob = free_space_prob
         # Create game components
@@ -87,7 +89,7 @@ class Scene:
         if use_seed:
             np.random.seed(self.rnd_value)
             random.seed(self.rnd_value)
-        self.map = Map(self.grid_shape[0], self.grid_shape[1], self.cell_size, self.rnd_value, self.free_space_prob)
+        self.map = Map(self.grid_shape, self.cell_size, self.rnd_value, self.free_space_prob)
         self.init_npcs(0)
         pos = self.get_random_position(true_random=random_player_position)
         self.player = Player(position=pos, world_map=self.map, cell_size=self.cell_size)
@@ -133,15 +135,17 @@ class Scene:
         self.npcs =  npcs
 
     def get_free_neighbors(self, pos):
+
         r = [-1, 0, 1]
         neighbors = []
         for i in r:
             for j in r:
-                if abs(i) + abs(j) < 2:
+                if (i != 0 or j != 0) and abs(i) + abs(j) < 2:
                     x = np.clip(pos[0] + i, 0, self.grid_shape[0]-1)
                     y = np.clip(pos[1] + j, 0, self.grid_shape[1]-1)
-                    if  self.map.map[x, y] != OBJECTS.obstable.value:
+                    if self.map.map[x, y] != OBJECTS.obstable.value:
                         neighbors.append((x, y))
+        neighbors = list(set(neighbors))
         
         return neighbors
 
@@ -150,27 +154,30 @@ class Scene:
 
         effect = np.zeros_like(self.map.reward_map)
 
-        visited = []
-        neighbors = [self.get_free_neighbors(pos)]
-
-        all_neighbors = list(neighbors)
+        visited = [tuple(pos)]
+        current_neighbors = self.get_free_neighbors(pos)
+        next_neighbors = []
+        all_neighbors = list(current_neighbors)
         level = 0
-        while len(neighbors) > 0:
-            current_level = neighbors[0]
-            for n in current_level:
+        
+        effect[*pos] = effect[*pos] + 1
+        while len(current_neighbors) > 0:
+            value = ((dist - level)/dist) ** 2
+            for n in current_neighbors:
                 if n not in visited:
-                    x, y = n[0], n[1]   
-
                     visited.append(n)
-                    value = dist - min(dist, np.linalg.norm(np.array([x, y]) - pos)) - level/2
                     if value > 0:
-                        value = effect[x, y] + value / dist
-                        effect[x, y] = value 
+                        x, y = n[0], n[1]
+                        effect[x, y] = effect[x, y] + value
                         next_level = self.get_free_neighbors(n)
-                        neighbors.append(next_level)
-                        all_neighbors.append(next_level)
+                        next_level = [_n for _n in next_level if _n not in visited]
+                        next_neighbors = next_neighbors + next_level
+                        all_neighbors = all_neighbors + next_level
+                
+            current_neighbors = next_neighbors
+            next_neighbors = []
             level += 1
-            neighbors = neighbors[1:]
+
         return effect, all_neighbors
         
 
@@ -194,7 +201,7 @@ class Scene:
         positions = np.array(positions).T
         
         for pos in positions.T:
-            effect, _ = self.get_reward_effect_area(pos, dist=30)
+            effect, _ = self.get_reward_effect_area(pos, dist=self.reward_effect_distance)
             self.map.reward_map += effect
 
         self.rewards = rewards
@@ -203,9 +210,8 @@ class Scene:
 
     def step(self, action):
         self.steps += 1
-        currect_reward = self.map.reward_map[self.player.x, self.player.y]
 
-        old_reward = self.map.reward_map[self.player.x, self.player.y]
+        # old_reward = self.map.reward_map[self.player.x, self.player.y]
         if action == 0:
             valid_move, overriding = self.player.move('up')
         elif action == 1:
@@ -233,7 +239,7 @@ class Scene:
                 # Remove reward effect area 
                 reward = 1
                 self.rewards = [rw for rw in self.rewards if not (rw.x == self.player.x and rw.y == self.player.y)]
-                self.map.reward_map -= self.get_reward_effect_area(np.array(pos), dist=15)[0]
+                self.map.reward_map -= self.get_reward_effect_area(np.array(pos), dist=self.reward_effect_distance)[0]
                             
 
         # End condition

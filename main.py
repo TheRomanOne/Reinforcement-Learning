@@ -45,8 +45,8 @@ def run_session(session_name, num_of_rewards, seed, grid_shape):
     # grid_shape = (9, 9)
         # grid_shape = (10, 21)
         # grid_shape = (9, 18)
-        # grid_shape = (10, 21)
-    # num_of_rewards = 1
+    grid_shape = (9, 12)
+    num_of_rewards = 1
 
 
     MAX_STEPS = min(1500, 10 * grid_shape[0] * grid_shape[1])
@@ -116,6 +116,16 @@ def run_session(session_name, num_of_rewards, seed, grid_shape):
 
             # Render
             scene.draw()
+            scene.draw_gui({
+                'Title:': session_name,
+                'Seed': scene.rnd_value,
+                'Episode': scene.episode,
+                # 'Confidence': f"{(1 - agent.epsilon):.2f}",
+                'Entropy': np.round(entropy, 2),
+                'Reward': np.round(scene.player.reward, 2)
+            },
+            f_size=25,
+            update=True)
             recorder.record(done)            
 
             loss = agent.train()
@@ -124,16 +134,6 @@ def run_session(session_name, num_of_rewards, seed, grid_shape):
                 losses.append(loss)
             state = next_state
 
-            scene.draw_gui({
-                'Seed': scene.rnd_value,
-                'Title:': session_name,
-                'Episode': scene.episode,
-                # 'Confidence': f"{(1 - agent.epsilon):.2f}",
-                'Entropy': np.round(entropy, 2),
-                # 'Reward': np.round(scene.player.reward, 2)
-            },
-            f_size=25,
-            update=True)
 
 
         mean_entropy = np.array(entropies).mean()

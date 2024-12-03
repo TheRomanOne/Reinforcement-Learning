@@ -1,4 +1,4 @@
-# **Dria** - Neural reinforced explorational agent
+# **Tob the bot** - Reinforcement learning project
 
 This is a game controlled by a reinforcement learning agent. The goal of the game is to collecting the rewards while navigate through and avoiding obstacles.
 
