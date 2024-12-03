@@ -36,7 +36,7 @@ class Recorder:
         episodes = np.array(range(len(entropies)))
         steps = np.array(steps)
         plot = [(episodes, steps, 'green', 'Steps')]
-        scatter = [(episodes[update_indices], steps[update_indices], 10, 'red', 'Updated Indices')]
+        scatter = [(episodes[update_indices], steps[update_indices], 10, 'red', 'terget updated')]
 
         plot_progress_with_map(
             f'{base_name}_steps.png', title,
@@ -59,7 +59,7 @@ class Recorder:
             means.append(np.array(e).mean())
 
         ents = np.array(ents)
-        
+        means = np.array(means)
         # plot entropies
         acts = np.array(range(len(ents)))
         # plot = [(acts, ents, 'blue', 'Steps')]
@@ -70,7 +70,7 @@ class Recorder:
         
         # plot entropy means
         plot = [(episodes, means, 'blue', 'Entropy mean')]
-        scatter = [(episodes[update_indices], plot[update_indices], 10, 'red', 'Updated Indices')]
+        scatter = [(episodes[update_indices], means[update_indices], 10, 'red', 'terget updated')]
 
         plot_progress_with_map(
             f'{base_name}_entropy.png',
