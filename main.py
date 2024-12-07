@@ -20,7 +20,7 @@ def check_q():
 def update_if_required(last_update, lowest_steps, steps, episode, agent, update_indices) :
     last_update += 1
     to_update=False
-    if last_update > 30 or last_update > 10 and steps < lowest_steps*1.1 and agent.epsilon > .1:
+    if last_update > 20 or last_update > 5 and steps < lowest_steps*1.1:
         lowest_steps = steps
         to_update = True
 
@@ -30,14 +30,11 @@ def update_if_required(last_update, lowest_steps, steps, episode, agent, update_
         update_indices.append(episode)
         print('updating target q function')
     
-    return last_update
+    return last_update, lowest_steps
 
-def run_session(session_name, num_of_rewards, seed, grid_shape):
+def run_session(session_name, num_of_rewards, seed, grid_shape, cell_size=40):
     print('Session name:', session_name)
     print(seed, shape, num_rewards)
-
-    cell_size = 40
-    
     # if grid_shape is None:
         # grid_shape = np.random.uniform(7, 20, (2,)).astype(int)
     # grid_shape = (9, 9)
@@ -46,11 +43,11 @@ def run_session(session_name, num_of_rewards, seed, grid_shape):
     # grid_shape = (9, 9)
         # grid_shape = (10, 21)
         # grid_shape = (9, 18)
-    grid_shape = (9, 12)
-    num_of_rewards = 1
+    # grid_shape = (9, 12)
+    # num_of_rewards = 3
 
 
-    MAX_STEPS = min(1500, 10 * grid_shape[0] * grid_shape[1])
+    MAX_STEPS = min(1000, 10 * grid_shape[0] * grid_shape[1])
     window_shape = (grid_shape[0] * cell_size, grid_shape[1] * cell_size)
 
     use_convolution=False
@@ -61,16 +58,16 @@ def run_session(session_name, num_of_rewards, seed, grid_shape):
         matrix_state=use_convolution, 
         seed=seed,
         num_of_rewards=num_of_rewards,
-        free_space_prob=.55 + .15 * np.random.rand()
+        free_space_prob=.65 + .15 * np.random.rand()
     )
 
     agent = DQLAgent(
         state_size=scene.get_state().shape,
         action_size=4,
         num_of_rewards=num_of_rewards,
-        epsilon_decay=0.997,
+        epsilon_decay=0.9975,
         learning_rate=0.001,
-        gamma=.98,
+        gamma=.95,
         use_convolution=use_convolution,
         epsilon_min=.05,
         epsilon_max = .9
@@ -87,8 +84,16 @@ def run_session(session_name, num_of_rewards, seed, grid_shape):
 
     recorder = Recorder(agent)
     recorder.assign_screen(scene.screen)
-    all_entropies = []
-    while agent.epsilon > 0.07:
+    # all_entropies = []
+
+    continue_session = True
+
+    target_entropy = 0
+    target_entropies = []
+    entropy_means = []
+    dones = []
+    rewards = []
+    while continue_session:
         random_player_position=False#.93 < agent.epsilon < .98
 
         use_seed = True#agent.epsilon < .5 or agent.epsilon > .95
@@ -111,12 +116,22 @@ def run_session(session_name, num_of_rewards, seed, grid_shape):
                 return False                 
 
             # action = agent.act(state)
-            action, entropy = agent.act_with_entropy(state)
-            next_state, reward, done = scene.step(action)
-            agent.store_transition(state, action, reward, next_state, done)
+            action, entropy = agent.act(state)
+            entropies.append(entropy)
+            target_entropy += (entropy - target_entropy) / 2
+            next_state, reward, done, collected_reward = scene.step(action)
+            dones.append(done)
+
+            if not collected_reward:
+                agent.store_transition(state, action, reward, next_state, done)
+            else:
+                agent.reduce_memory()
+                scene.state_hashes = set()
 
             # Render
             scene.draw()
+            recorder.record(done)            
+
             scene.draw_gui({
                 'Title:': session_name,
                 'Seed': scene.rnd_value,
@@ -127,18 +142,15 @@ def run_session(session_name, num_of_rewards, seed, grid_shape):
             },
             f_size=25,
             update=True)
-            recorder.record(done)            
 
             loss = agent.train()
-            entropies.append(entropy)
             if loss > -1:
                 losses.append(loss)
             state = next_state
 
-
-        all_entropies.append(entropies)
+        # all_entropies.append(entropies)
         mean_entropy = np.array(entropies).mean()
-        agent.adjust_epsilon(mean_entropy)
+        entropy_means.append(mean_entropy)
                 
         if done: last_complete = 0
         else: last_complete += 1
@@ -146,21 +158,42 @@ def run_session(session_name, num_of_rewards, seed, grid_shape):
         steps.append(scene.steps)
         epsilons.append(agent.epsilon)
 
-        if agent.epsilon > .1:
-            last_update = update_if_required(last_update, lowest_steps, scene.steps, scene.episode, agent, update_indices)
+        if agent.epsilon > .15:
+            last_update, lowest_steps = update_if_required(last_update, lowest_steps, scene.steps, scene.episode, agent, update_indices)
 
         collected = scene.reward_batch_size - len(scene.rewards)
+        continue_session = agent.epsilon > 0.07
+        # if target_entropy == -1:
+        #     target_entropy = mean_entropy
+        # target_entropy += (mean_entropy.item() - target_entropy) / 2
+        
+        target_entropies.append(target_entropy)
+        rewards.append(scene.player.reward)
+        # agent.adjust_epsilon(mean_entropy, target_entropy)
+        if len(rewards) > 10 and last_update > 3 or (len(dones) > 7 and sum(dones[:-7]) > 4):
+            panelty = (lowest_steps - np.array(steps[-5:]).mean())/10
+            agent.adjust_epsilon(entropy)
+            rewards.pop(0)
+            if len(dones) > 10: dones.pop(0)
+
         print(f"{scene.episode} || steps: {scene.steps} || entropy: {mean_entropy:.2f} || reward: {scene.player.reward:.2f} || eps: {agent.epsilon:.2f} || {collected}/{scene.reward_batch_size} {" - Pass" if collected==scene.reward_batch_size else ""}{" (REC)" if recorder.captured else ''}")
     
     
-    title = f"Seed {scene.rnd_value} || Map {grid_shape} || Rewards {scene.num_of_rewards} || Freespace {scene.free_space_prob:.2f}"
-    recorder.save_media(session_name, title, steps, epsilons, all_entropies, update_indices)
+    # title = f"Seed {scene.rnd_value} || Map {grid_shape} || Rewards {scene.num_of_rewards} || Freespace {scene.free_space_prob:.2f}"
+    target_entropies = np.array(target_entropies)
+    target_entropies -= target_entropies.min()
+    target_entropies /= target_entropies.max()
+
+    entropy_means = np.array(entropy_means)
+    entropy_means -= entropy_means.min()
+    entropy_means /= entropy_means.max()
+    recorder.save_media(session_name, steps, epsilons, target_entropies, entropy_means, update_indices)
     return True
 
 
 
 if __name__ == '__main__':
-    session_name = "test run"
+    session_name = "test run 2"
     parser = argparse.ArgumentParser(description="<seed> ")
     # Make arguments optional with default values
     parser.add_argument('--s', type=int, nargs='?', default=None, help="seed number")

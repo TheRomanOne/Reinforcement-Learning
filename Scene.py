@@ -73,7 +73,7 @@ class Scene:
         self.clock = pygame.time.Clock()
         self.episode = 0
         self.matrix_state = matrix_state
-        self.reward_effect_distance = 10
+        self.reward_effect_distance = 30
         self.font = pygame.font.Font(None, 36)  # Use default font with size 36
         self.free_space_prob = free_space_prob
         # Create game components
@@ -90,13 +90,16 @@ class Scene:
         if use_seed:
             np.random.seed(self.rnd_value)
             random.seed(self.rnd_value)
-        self.map = Map(self.grid_shape, self.cell_size, self.rnd_value, self.free_space_prob)
+        all_free_space = []
         self.init_npcs(0)
-        pos = self.get_random_position(true_random=random_player_position)
-        self.player = Player(position=pos, world_map=self.map, cell_size=self.cell_size)
-        all_free_space = self.get_reward_effect_area(pos, 9999)[1]
-        all_free_space.append(tuple(pos))
-        self.map.update_freespace(all_free_space)
+        while len(all_free_space) < self.grid_shape[0] * self.grid_shape[1] //5:
+            self.map = Map(self.grid_shape, self.cell_size, self.rnd_value, self.free_space_prob)
+            pos = self.get_random_position(true_random=random_player_position)
+            self.player = Player(position=pos, world_map=self.map, cell_size=self.cell_size)
+            all_free_space = self.get_reward_effect_area(pos, 9999)[1]
+            all_free_space.append(tuple(pos))
+            self.map.update_freespace(all_free_space)
+
         self.init_rewards(self.num_of_rewards, batches=random_player_position)
         self.open_door = Door((self.player.x, self.player.y), self.cell_size, open=True)
 
@@ -157,9 +160,12 @@ class Scene:
         run in console to check reward map
         
         power = 3
-        l = (np.array(list(range(1, 11)))/10) ** power
-        print("reward array", l)
-        print("reward intervals between levels", np.array([x - l[i-1:i] for i, x in enumerate(l)][1:]).T[0])
+        n=30
+        l = (np.array(list(range(1, n+1)))/n) ** power
+        print("reward array:", l)
+        levels = 2*np.array([x - l[i-1:i] for i, x in enumerate(l)][1:]).T[0]
+        print("reward intervals between levels:", levels)
+        print("Total possible reward:", np.sum(levels))
         """
         effect = np.zeros_like(self.map.reward_map)
 
@@ -222,36 +228,42 @@ class Scene:
 
     def step(self, action):
         self.steps += 1
-
-        # old_reward = self.map.reward_map[self.player.x, self.player.y]
+        old_reward = self.map.reward_map[self.player.x, self.player.y]
         valid_move, new_cell = self.player.move({0: 'up', 1: 'down', 2: 'left', 3: 'right' }[action])
-        reward = -.1
-        
+        reward = 0
+        pos = [self.player.x, self.player.y]
+        collected_reward = False
         if not valid_move:
-            reward = -1
+            reward = -.05
         else:
             pos = [self.player.x, self.player.y]
-            h = self.get_state_hash()
-            if h not in self.state_hashes:
-                self.state_hashes.add(h)
-                novelty_bonus = 1 / (1 + len(self.state_hashes))  # Decrease as the agent discovers more states
-                reward += novelty_bonus
-
             if new_cell == OBJECTS.reward.value:
+                collected_reward = True
                 # Remove reward effect area 
-                reward = 1
                 self.rewards = [rw for rw in self.rewards if not (rw.x == self.player.x and rw.y == self.player.y)]
                 self.map.reward_map -= self.get_reward_effect_area(np.array(pos), dist=self.reward_effect_distance)[0]
+                reward = .5#(self.num_of_rewards - len(self.rewards)) / self.num_of_rewards
+            else:
+                novelty_reward = 0
+                h = self.get_state_hash()
+                if h not in self.state_hashes:
+                    self.state_hashes.add(h)
+                    # scale = (((1 + self.num_of_rewards) - len(self.rewards)) / self.num_of_rewards)
+                    novelty_reward = 1# = .1/(len(self.rewards)+1)
+                reward = novelty_reward * (self.map.reward_map[*pos] - old_reward)
+            # print(reward)
                             
-
+        # if reward > 1.1:
         # End condition
         done = False
         if len(self.rewards) == 0:
             done = True
-        
+            reward = 1
+        # print(reward)
         next_state = self.get_state()
         self.player.reward += reward
-        return next_state, reward, done
+        return next_state, reward, done, collected_reward
+    
     def draw(self, update=False):
         
         # Draw the grid and player

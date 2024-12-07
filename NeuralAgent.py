@@ -4,6 +4,19 @@ import torch.optim as optim
 from utils import device
 import numpy as np
 import random
+import pygame
+
+def get_user_input():
+    action = None
+    for event in pygame.event.get():
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_w: action = 0
+            elif event.key == pygame.K_s: action = 1
+            elif event.key == pygame.K_a: action = 2
+            elif event.key == pygame.K_d: action = 3
+            break
+    return action
+
 
 class QNet(nn.Module):
     def __init__(self, input_shape, action_size):
@@ -81,17 +94,21 @@ class DQLAgent:
         self.epsilon_max = epsilon_max
         self.use_convolution = use_convolution
         self.local_rng = np.random.default_rng()
-        self.max_injection_count = 0
+        self.max_injection_count = 16
         Model = QNetConv if use_convolution else QNet
         self.q_network = Model(state_size, action_size).to(device)
         self.target_network = Model(state_size, action_size).to(device)
         self.optimizer = optim.Adam(self.q_network.parameters(), lr=learning_rate)
-
         # Experience replay buffer
         self.memory = []
         self.max_mem_size = 25000
         self.batch_size = 128
         self.memory_hash = []
+
+    def reduce_memory(self):
+        if len(self.memory) > self.batch_size:
+            indices = np.random.choice(range(len(self.memory)), self.batch_size)
+            self.memory = np.array(self.memory, dtype=object)[indices].tolist()
 
     def store_transition(self, state, action, reward, next_state, done):
         self.memory.append((state, action, reward, next_state, done))
@@ -99,18 +116,17 @@ class DQLAgent:
             i = np.random.randint(len(self.memory))
             self.memory.pop(i)
 
-    def act_with_entropy(self, state):
+    def act(self, state):
         
         with torch.no_grad():
-            self.q_network.eval()  # Switch to evaluation mode
+            self.q_network.eval()
+
             state = torch.FloatTensor(state).unsqueeze(0).to(device)
             q_values = self.q_network(state)
             probs = torch.nn.functional.softmax(q_values)
             entropy = -torch.sum(probs * torch.log(probs + 1e-9)).item()# / len(probs[0])
 
-            # entropy = (-torch.sum(probs * torch.log(probs), dim=1)).mean().item()
-            # entropy = np.clip(entropy, 0.1, 1)
-            self.q_network.train()  # Switch back to training mode (if needed)
+            self.q_network.train()
 
         if self.local_rng.uniform(0, 1) < self.epsilon:
             choice = self.local_rng.choice(self.action_size)
@@ -119,31 +135,18 @@ class DQLAgent:
 
         return choice, entropy
     
-    def act(self, state):
-        if self.local_rng.uniform(0, 1) < self.epsilon:
-            choice = self.local_rng.choice(self.action_size)
-        else:
-            with torch.no_grad():
-                self.q_network.eval()  # Switch to evaluation mode
-                state = torch.FloatTensor(state).unsqueeze(0).to(device)
-                q_values = self.q_network(state)
-                self.q_network.train()  # Switch back to training mode (if needed)
-            choice = torch.argmax(q_values).item()
-
-        return choice
-
     def train(self):
         if len(self.memory) < self.batch_size:
             return -1
         
 
-        _, _, rewards, _, _ = zip(*self.memory)
+        _, _, rewards, _, dones = zip(*self.memory)
         rewards = np.array(rewards)
         indices = np.where(rewards > 0)[0]
         np.random.shuffle(indices)
         indices = indices[:self.max_injection_count]
 
-        chosen = [i for i in indices if np.random.rand() > .5]
+        chosen = [i for i in indices if np.random.rand() > .7]
         
         batch = random.sample(self.memory, self.batch_size - len(chosen))
         states, actions, rewards, next_states, dones = zip(*batch)
@@ -157,11 +160,13 @@ class DQLAgent:
             next_states = np.array(next_states + _next_states)
             dones = np.array(dones + _dones)
             
-            np.random.shuffle(states)
-            np.random.shuffle(actions)
-            np.random.shuffle(rewards)
-            np.random.shuffle(next_states)
-            np.random.shuffle(dones)
+            new_indices = list(range(len(states)))
+            np.random.shuffle(new_indices)
+            states = states[new_indices]
+            actions = actions[new_indices]
+            rewards = rewards[new_indices]
+            next_states = next_states[new_indices]
+            dones = dones[new_indices]
         
         states = torch.FloatTensor(states).to(device)
         actions = torch.LongTensor(actions).to(device)
@@ -177,15 +182,6 @@ class DQLAgent:
         # Compute current Q-values
         q_values = self.q_network(states)
 
-        # probs = torch.nn.functional.softmax(q_values)
-        # entropy = (-torch.sum(probs * torch.log(probs), dim=1)).mean().item()
-        # entropy = np.clip(entropy, 0.1, 1)
-        # self.epsilon += .1 * (entropy - 0.5)
-        # self.epsilon = np.clip(self.epsilon, 0, 1)
-        # self.epsilon = np.clip(self.epsilon, 0, 1)
-        # self.epsilon = np.clip(self.epsilon_max - entropy * self.epsilon_decay, self.epsilon_min, self.epsilon_max)
-
-        # self.adjust_epsilon(0)
         # Compute loss and update the network
         q_values = q_values.gather(1, actions.unsqueeze(1)).squeeze()
         loss = nn.MSELoss()(q_values, target_q_values)
@@ -195,28 +191,8 @@ class DQLAgent:
 
         return loss.item()
         
-    def adjust_epsilon(self, entropy):
-        target_entropy = 1.3
-        entropy_diff = 0#entropy - target_entropy
-        eps = (self.epsilon - .333 * entropy_diff) * self.epsilon_decay
-        self.epsilon = np.clip(eps, 0, 1)
-        # self.epsilon = (1 - (entropy-1.2))
-        # self.epsilon *= self.epsilon_decay
-        # alpha = 0.5  # Learning rate for epsilon adjustment
-        # self.epsilon += alpha * entropy
-        # self.epsilon = np.clip(self.epsilon, .01, 1)
-
-        # min_epsilon = 0.01  # minimum value for epsilon to avoid total exploitation
-        # max_epsilon = 1.0  # max value for exploration (start here)
-        
-        # # Adjust epsilon based on mean entropy (more entropy = more exploration)
-        # if entropy > 1.2:  # High entropy means the agent is still exploring
-        #     self.epsilon = max(self.epsilon * self.epsilon_decay, min_epsilon)
-        # else:  # The agent is converging, encourage more exploitation
-        #     self.epsilon = max(self.epsilon * self.epsilon_decay, min_epsilon)
-
-        # # Ensure epsilon doesn't go below the minimum threshold
-        # self.epsilon = max(self.epsilon, min_epsilon)
+    def adjust_epsilon(self):
+        self.epsilon *= self.epsilon_decay
 
     def update_target_network(self):
         self.target_network.load_state_dict(self.q_network.state_dict())

@@ -16,70 +16,61 @@ class Recorder:
         self.recording_checkpoints = [1.1]+[(n-i)/n for i in range(n)]
     
 
-    def save_media(self, name, title, steps, epsilons, entropies, update_indices):
+    def save_media(self, name, steps, epsilons, target_entropies, entropies, update_indices):
     
         s = 5
         videos = self.videos[:s] + self.videos[s:][::4] + self.videos[-3:]
         video = []
         videos.sort(key=len)
         print('Total runs in video:', len(videos))
-        max_len = 900
+        max_len = 1500
         for v in videos:
             if len(video) < max_len:
                 video = v + video 
 
         update_indices = update_indices[:-1]
         base_name =  f"plots/{name.replace(' ', '_')}"
-        # create_video(np.array(video), f'{base_name}.mp4', fps=30)
+        create_video(np.array(video), f'{base_name}.mp4', fps=50)
         
 
-        episodes = np.array(range(len(entropies)))
+        episodes = np.array(range(len(steps)))
         steps = np.array(steps)
-        plot = [(episodes, steps, 'green', 'Steps')]
-        scatter = [(episodes[update_indices], steps[update_indices], 10, 'red', 'terget updated')]
+        plot_1 = [(episodes, steps, 'green', 'Steps')]
+        scatter_1 = [(episodes[update_indices], steps[update_indices], 10, 'red', 'Terget Updated')]
+
+        # start_session = []
+        # end_session = []
+        # ents = []
+        # means = []
+        # for e in entropies:
+        #     start_session.append(len(ents))
+        #     end_session.append(len(ents) + len(e) - 1)
+        #     ents = ents + e
+        #     means.append(np.array(e).mean())
+
+        # ents = np.array(entropies)
+        # means = np.array(means)
+        entropies = np.array(entropies)
+        target_entropies = np.array(target_entropies)
+        plot_2 = [
+            (episodes, epsilons, 'blue', 'Epsilon'),
+            (episodes, target_entropies, 'green', 'Target entropy'),
+            (episodes, entropies, 'red', 'Entropy Mean'),
+
+        ]
+        scatter_2 = [(update_indices, entropies[update_indices], 10, 'red', 'Terget Updated')]
 
         plot_progress_with_map(
-            f'{base_name}_steps.png', title,
+            img_name=f'{base_name}_entropy.png',
             map_screenshot=self.screenshot,
-            x_label='Episode',
-            y_label='Steps"',
-            to_scatter=scatter,
-            to_plot=plot,
-        )
-        # plot_progress_with_map(, title, "Act", 'Entropy', 'blue', entropies, range(len(entropies)), update_indices, self.screenshot)
-
-        start_session = []
-        end_session = []
-        ents = []
-        means = []
-        for e in entropies:
-            start_session.append(len(ents))
-            end_session.append(len(ents) + len(e) - 1)
-            ents = ents + e
-            means.append(np.array(e).mean())
-
-        ents = np.array(ents)
-        means = np.array(means)
-        # plot entropies
-        acts = np.array(range(len(ents)))
-        # plot = [(acts, ents, 'blue', 'Steps')]
-        # scatter = [
-        #     (acts[start_session], ents[start_session], 20, 'red', 'Level Begin'),
-        #     (acts[end_session], ents[end_session], 20, 'green', 'Level End')
-        # ]
-        
-        # plot entropy means
-        plot = [(episodes, means, 'blue', 'Entropy mean')]
-        scatter = [(episodes[update_indices], means[update_indices], 10, 'red', 'terget updated')]
-
-        plot_progress_with_map(
-            f'{base_name}_entropy.png',
-            title='Entropy',
-            map_screenshot=self.screenshot,
-            x_label='Act',
-            y_label='Entropy"',
-            to_scatter=scatter,
-            to_plot=plot,
+            x_label_1='Episode',
+            x_label_2='Episode',
+            y_label_1='Steps',
+            y_label_2='Entropy',
+            to_scatter_1=scatter_1,
+            to_plot_1=plot_1,
+            to_scatter_2=scatter_2,
+            to_plot_2=plot_2
         )
 
     def start_new_session(self):
